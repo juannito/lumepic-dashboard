@@ -20,7 +20,7 @@ type CacheEntry = {
   expiresAt: number;
   value: unknown;
 };
-type ProfileConfig = {
+export type ProfileConfig = {
   id: string;
   label: string;
   token: string;
@@ -109,7 +109,7 @@ function slugify(value: string, fallback: string) {
   return slug || fallback;
 }
 
-function getProfileConfigs(): ProfileConfig[] {
+export function getProfileConfigs(): ProfileConfig[] {
   const parsedProfiles = process.env.LUMEPIC_PROFILES;
   if (parsedProfiles) {
     try {
@@ -151,10 +151,12 @@ function getProfileConfigs(): ProfileConfig[] {
   return configs;
 }
 
-async function lumepicFetch(path: string, token: string) {
+export async function lumepicFetch(path: string, token: string, bypassCache = false) {
   const cacheKey = `${normalizeToken(token).slice(-12)}:${path}`;
-  const cached = lumepicCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (!bypassCache) {
+    const cached = lumepicCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -169,23 +171,55 @@ async function lumepicFetch(path: string, token: string) {
   }
 
   const value = (await response.json()) as unknown;
-  lumepicCache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  if (!bypassCache) {
+    lumepicCache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
   return value;
 }
 
+function extractBuyerInfo(
+  record: AnyRecord,
+  summaryRecord?: AnyRecord,
+  firstPayment?: AnyRecord,
+  isComped: boolean = false
+) {
+  const primary = record;
+  const secondary = summaryRecord || {};
+  const payment = firstPayment || {};
+
+  const buyerObj = asRecord(
+    primary.buyer || primary.customer || primary.user ||
+    secondary.buyer || secondary.customer || secondary.user
+  );
+
+  const email = stringFrom(buyerObj, ["email"], stringFrom(payment, ["payerEmail"], "")).trim();
+  
+  let name = stringFrom(buyerObj, ["name", "fullName"], "").trim();
+  if (!name) {
+    name = stringFrom(payment, ["payerName"], "").trim();
+  }
+  if (!name) {
+    name = email || (isComped ? "Comprador bonificado" : "Comprador");
+  }
+
+  return { name, email };
+}
+
 function normalizeSale(record: AnyRecord): Sale {
-  const buyer = asRecord(record.buyer || record.customer || record.user);
   const album = asRecord(record.album);
   const activity = asRecord(record.activity || album.activity);
   const grossTotal = numberFrom(record, ["sellerRevenue", "totalEarnings", "totalPrice", "total", "amount"], 0);
   const subtotal = numberFrom(record, ["value", "subtotalPrice", "subtotal"], grossTotal);
   const discount = numberFrom(record, ["discountTotal", "discount"], Math.max(subtotal - grossTotal, 0));
   const fees = numberFrom(record, ["fees"], 0);
+  const isComped = grossTotal <= 0;
+
+  const buyerInfo = extractBuyerInfo(record, undefined, undefined, isComped);
 
   return {
     id: stringFrom(record, ["id", "uuid", "_id"], "sale"),
-    buyer: stringFrom(buyer, ["name", "fullName", "email"], "Comprador"),
-    buyerEmail: stringFrom(buyer, ["email"], ""),
+    buyer: buyerInfo.name,
+    buyerEmail: buyerInfo.email,
     album: stringFrom(album, ["title", "name"], nestedString(record, ["albumName"], "Album")),
     activity: stringFrom(activity, ["name", "title"], nestedString(record, ["activityName"], "General")),
     status: stringFrom(record, ["status"], "approved"),
@@ -196,7 +230,7 @@ function normalizeSale(record: AnyRecord): Sale {
     total: Math.max(grossTotal - fees, 0),
     grossTotal,
     fees,
-    isComped: grossTotal <= 0,
+    isComped,
     detailsLoaded: false,
     photographs: []
   };
@@ -249,11 +283,14 @@ function normalizeDetailedSale(
     numberFrom(summaryRecord, ["sellerRevenue", "totalEarnings"], 0) ||
     relevantLineItems.reduce((sum, item) => sum + numberFrom(item, ["totalPrice"], 0), 0);
   const paidPhotoCount = relevantLineItems.filter((item) => numberFrom(item, ["totalPrice"], 0) > 0).length;
+  const isComped = grossTotal <= 0;
+
+  const buyerInfo = extractBuyerInfo(record, summaryRecord, firstPayment, isComped);
 
   return {
     id: stringFrom(record, ["id", "uuid", "_id"], stringFrom(summaryRecord, ["id"], "sale")),
-    buyer: stringFrom(firstPayment, ["payerName", "payerEmail"], "Comprador bonificado"),
-    buyerEmail: stringFrom(firstPayment, ["payerEmail"], ""),
+    buyer: buyerInfo.name,
+    buyerEmail: buyerInfo.email,
     album: stringFrom(firstAlbum, ["description", "title", "name"], stringFrom(firstEvent, ["name"], "Album")),
     activity: stringFrom(firstActivity, ["name", "title"], "General"),
     status: stringFrom(record, ["status"], stringFrom(summaryRecord, ["status"], "approved")),
@@ -264,34 +301,44 @@ function normalizeDetailedSale(
     total: Math.max(grossTotal - fees, 0),
     grossTotal,
     fees,
-    isComped: grossTotal <= 0,
+    isComped,
     detailsLoaded: true,
     photographs
   };
 }
 
-async function settleDetailedSales(salesRows: AnyRecord[], token: string, sellerId: string) {
+async function settleDetailedSales(salesRows: AnyRecord[], token: string, sellerId: string, bypassCache = false) {
   const details: Sale[] = [];
   let failed = 0;
+  
+  const chunkSize = 10;
+  const maxDetailedSales = 100;
 
-  for (const sale of salesRows) {
-    const id = stringFrom(sale, ["id"], "");
-    if (!id) {
-      details.push(normalizeSale(sale));
-      continue;
-    }
+  for (let i = 0; i < salesRows.length; i += chunkSize) {
+    const chunk = salesRows.slice(i, i + chunkSize);
+    const promises = chunk.map(async (sale, index) => {
+      const globalIndex = i + index;
+      const id = stringFrom(sale, ["id"], "");
+      
+      if (!id || globalIndex >= maxDetailedSales) {
+        return normalizeSale(sale);
+      }
 
-    try {
-      const detail = await lumepicFetch(`/sales/${id}`, token);
-      const photographsRaw = await lumepicFetch(
-        `/sales/${id}/photographs?pagination[limit]=20&pagination[skip]=0`,
-        token
-      ).catch(() => ({ eventPhotographs: [], albumPhotographs: [] }));
-      details.push(normalizeDetailedSale(asRecord(detail), sale, sellerId, normalizeSalePhotographs(photographsRaw)));
-    } catch {
-      failed += 1;
-      details.push(normalizeSale(sale));
-    }
+      try {
+        const [detail, photographsRaw] = await Promise.all([
+          lumepicFetch(`/sales/${id}`, token, bypassCache),
+          lumepicFetch(`/sales/${id}/photographs?pagination[limit]=20&pagination[skip]=0`, token, bypassCache)
+            .catch(() => ({ eventPhotographs: [], albumPhotographs: [] }))
+        ]);
+        return normalizeDetailedSale(asRecord(detail), sale, sellerId, normalizeSalePhotographs(photographsRaw));
+      } catch {
+        failed += 1;
+        return normalizeSale(sale);
+      }
+    });
+
+    const results = await Promise.all(promises);
+    details.push(...results);
   }
 
   return { details, failed };
@@ -310,10 +357,17 @@ function applyEstimatedFees(sales: Sale[], feeRate: number) {
 }
 
 function normalizeAlbum(record: AnyRecord): AlbumInsight {
+  const event = asRecord(record.event || record.eventInsight);
+  const resolvedDate = stringFrom(record, ["takenDate", "eventDate"], 
+    stringFrom(event, ["takenDate", "date", "createdAt", "created_at"], 
+      stringFrom(record, ["createdAt", "created_at"], new Date().toISOString())
+    )
+  );
+
   return {
     id: stringFrom(record, ["id", "uuid", "_id"], "album"),
     title: stringFrom(record, ["description", "title", "name"], "Album"),
-    createdAt: stringFrom(record, ["createdAt", "created_at", "takenDate"], new Date().toISOString()),
+    createdAt: resolvedDate,
     views: numberFrom(record, ["views", "visits", "totalViews"], 0),
     photos: numberFrom(record, ["photographCount", "photographsCount", "photosCount", "totalPhotographs"], 0),
     soldPhotos: numberFrom(record, ["photographsSold", "soldPhotos", "photosSold"], 0),
@@ -410,29 +464,73 @@ function normalizeProfile(value: unknown) {
   };
 }
 
-async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number = 500): Promise<DashboardSummary> {
+async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number = 500, bypassCache = false): Promise<DashboardSummary> {
   try {
     const token = config.token;
     const [salesRaw, albumsRaw, activityRaw, insightsRaw, publishedRaw, metricsRaw, profileRaw] =
       await Promise.all([
-        lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token),
-        lumepicFetch("/albums?pagination%5Blimit%5D=20&pagination%5Bskip%5D=0&order%5Bfield%5D=CREATED_AT&order%5Bsort%5D=DESC", token),
-        lumepicFetch("/dashboard/photographer/sales-by-activity", token),
-        lumepicFetch("/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=9&pagination%5Bskip%5D=0", token),
-        lumepicFetch("/dashboard/photographer/published-albums", token),
-        lumepicFetch("/dashboard/photographer/metrics", token),
-        lumepicFetch("/users/profile", token)
+        lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token, bypassCache),
+        lumepicFetch("/albums?pagination%5Blimit%5D=20&pagination%5Bskip%5D=0&order%5Bfield%5D=CREATED_AT&order%5Bsort%5D=DESC", token, bypassCache),
+        lumepicFetch("/dashboard/photographer/sales-by-activity", token, bypassCache),
+        lumepicFetch("/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=9&pagination%5Bskip%5D=0", token, bypassCache),
+        lumepicFetch("/dashboard/photographer/published-albums", token, bypassCache),
+        lumepicFetch("/dashboard/photographer/metrics", token, bypassCache),
+        lumepicFetch("/users/profile", token, bypassCache)
       ]);
 
     const profile = normalizeProfile(profileRaw);
     const sellerId = stringFrom(asRecord(profileRaw), ["id"], "");
     const salesRows = arrayFrom(salesRaw);
+    const rawAlbumsItems = arrayFrom(albumsRaw);
+    const albumEventIdMap = new Map<string, string>();
+    rawAlbumsItems.forEach(item => {
+      const albumId = stringFrom(item, ["id"], "");
+      const eventId = stringFrom(item, ["eventId"], "") || stringFrom(asRecord(item.event), ["id"], "");
+      if (albumId && eventId) {
+        albumEventIdMap.set(albumId, eventId);
+      }
+    });
+
     const albumInsights = arrayFrom(insightsRaw).map(normalizeAlbum);
-    const albumFallbacks = arrayFrom(albumsRaw).map(normalizeAlbum);
-    const albums = albumInsights.length ? albumInsights : albumFallbacks;
+    const albumFallbacks = rawAlbumsItems.map(normalizeAlbum);
+    let albums = albumInsights.length ? albumInsights : albumFallbacks;
+
+    try {
+      const albumMetricsPromises = albums.map(async (album) => {
+        const eventId = albumEventIdMap.get(album.id);
+        if (eventId) {
+          try {
+            const metrics = await lumepicFetch(`/dashboard/photographer/metrics?eventId=${eventId}`, token, bypassCache);
+            const earnings = asRecord(asRecord(metrics).earnings);
+            const netRevenue = numberFrom(earnings, ["totalEarningsInUsd", "usd"], 0);
+            return { albumId: album.id, netRevenue, eventId };
+          } catch (e) {
+            console.error(`Error fetching metrics for event ${eventId}:`, e);
+          }
+        }
+        return { albumId: album.id, netRevenue: 0, eventId: "" };
+      });
+      const albumMetricsResults = await Promise.all(albumMetricsPromises);
+      const albumNetRevenueMap = new Map<string, number>();
+      const albumEventMap = new Map<string, string>();
+      albumMetricsResults.forEach(res => {
+        albumNetRevenueMap.set(res.albumId, res.netRevenue);
+        if (res.eventId) albumEventMap.set(res.albumId, res.eventId);
+      });
+
+      albums = albums.map(album => ({
+        ...album,
+        netRevenue: albumNetRevenueMap.get(album.id) || 0,
+        eventId: albumEventMap.get(album.id) || ""
+      }));
+    } catch (caught) {
+      console.error("Error fetching album metrics:", caught);
+    }
+
     const detailResult = sellerId
-      ? await settleDetailedSales(salesRows, token, sellerId)
+      ? await settleDetailedSales(salesRows, token, sellerId, bypassCache)
       : { details: salesRows.map(normalizeSale), failed: 0 };
+
     const observedFeeRate =
       detailResult.details
         .filter((sale) => sale.grossTotal > 0 && sale.fees > 0)
@@ -503,13 +601,38 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         : undefined
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "error desconocido";
     return {
-      ...demoSummary,
       id: config.id,
       label: config.label,
       color: config.color,
+      currency: "USD",
+      source: "live",
       updatedAt: new Date().toISOString(),
-      warning: `No pude conectar ${config.label}: ${error instanceof Error ? error.message : "error desconocido"}.`
+      profile: {
+        name: config.label,
+        email: "Sin datos",
+        studio: "Sin datos"
+      },
+      totals: {
+        revenue: 0,
+        grossRevenue: 0,
+        subtotal: 0,
+        discounts: 0,
+        fees: 0,
+        sales: 0,
+        orders: 0,
+        albums: 0,
+        photos: 0,
+        publishedPhotos: 0,
+        avgOrder: 0,
+        conversion: 0
+      },
+      trend: [],
+      activities: [],
+      albums: [],
+      sales: [],
+      warning: `No pude conectar ${config.label}: ${errorMsg}.`
     };
   }
 }
@@ -617,7 +740,7 @@ function buildConsolidatedSummary(profiles: DashboardSummary[]): ConsolidatedSum
   };
 }
 
-export async function getLumepicDashboard(limit: number = 500): Promise<DashboardPayload> {
+export async function getLumepicDashboard(limit: number = 500, bypassCache = false): Promise<DashboardPayload> {
   const configs = getProfileConfigs();
   const updatedAt = new Date().toISOString();
 
@@ -637,7 +760,7 @@ export async function getLumepicDashboard(limit: number = 500): Promise<Dashboar
     };
   }
 
-  const profiles = await Promise.all(configs.map((config) => getLumepicSummaryForProfile(config, limit)));
+  const profiles = await Promise.all(configs.map((config) => getLumepicSummaryForProfile(config, limit, bypassCache)));
   const warnings = profiles.map((profile) => profile.warning).filter(Boolean);
 
   return {

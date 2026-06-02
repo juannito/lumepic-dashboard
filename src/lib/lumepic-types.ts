@@ -27,6 +27,8 @@ export type AlbumInsight = {
   soldPhotos: number;
   sales: number;
   revenue: number;
+  netRevenue?: number;
+  eventId?: string;
   conversion: number;
 };
 
