@@ -9207,9 +9207,43 @@ export function Dashboard() {
                 {/* Open local file button on top-right of image */}
                 {activeDirName && localSearchStatus === "found" && localPhotoUrl && (
                   <a
-                    href={localPhotoUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (localPhotoUrl) {
+                        const newTab = window.open();
+                        if (newTab) {
+                          newTab.document.write(`
+                            <html>
+                              <head>
+                                <title>${activeLightboxPhoto.originalFileName || "Local File"}</title>
+                                <style>
+                                  body {
+                                    margin: 0;
+                                    background: #0e1117;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    min-height: 100vh;
+                                    overflow: hidden;
+                                  }
+                                  img {
+                                    max-width: 100%;
+                                    max-height: 100vh;
+                                    object-fit: contain;
+                                    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+                                  }
+                                </style>
+                              </head>
+                              <body>
+                                <img src="${localPhotoUrl}" />
+                              </body>
+                            </html>
+                          `);
+                          newTab.document.close();
+                        }
+                      }
+                    }}
                     style={{
                       position: "absolute",
                       top: "16px",
