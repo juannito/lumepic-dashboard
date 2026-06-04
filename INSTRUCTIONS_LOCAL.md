@@ -26,24 +26,10 @@ El proyecto requiere una herramienta llamada **Node.js** para ejecutarse.
 
 ---
 
-## Paso 2: Descargar u Obtener el Proyecto
-
-### Opción A: Descomprimir archivo ZIP (Si te lo enviaron comprimido)
-1. Haz doble clic en el archivo ZIP para descomprimirlo.
+## Paso 2: Descargar el Proyecto
+Si te han enviado el proyecto comprimido en un archivo ZIP:
+1. Haz doble clic en el archivo para descomprimirlo.
 2. Mueve la carpeta resultante a un lugar cómodo, por ejemplo, en tu carpeta **Documentos** o en el **Escritorio**.
-
-### Opción B: Clonar desde un repositorio (Si prefieres usar Git)
-Si tienes acceso al repositorio del código (por ejemplo, en GitHub):
-1. Asegúrate de tener Git instalado en tu máquina (puedes descargarlo de [git-scm.com](https://git-scm.com/)).
-2. Abre la consola o terminal de tu computadora y ubícate en la carpeta donde quieras clonar el proyecto (ej: `cd Documents`).
-3. Ejecuta el siguiente comando para clonar el repositorio:
-   ```bash
-   git clone <enlace-del-repositorio>
-   ```
-4. Ingresa a la carpeta descargada:
-   ```bash
-   cd lumepic
-   ```
 
 ---
 
@@ -72,7 +58,7 @@ LUMEPIC_API_BASE_URL=https://api.lumepic.com
 *Nota: No te preocupes si tus tokens tienen la palabra "Bearer" al principio o no, la aplicación se encarga de limpiarlos automáticamente.*
 
 ### 🔍 ¿Cómo conseguir tu Token de Lumepic usando tu navegador?
-Si no sabes dónde encontrar tu token de fotógrafo, puedes extraerlo fácilmente de la plataforma web de Lumepic siguiendo estos pasos desde tu navegador (como Google Chrome o Edge):
+Si no sabes dónde encontrar tu token de fotógrafo, puedes extraerlo fácilmente de tu dashboard de fotógrafo en Lumepic siguiendo estos pasos desde tu navegador (como Google Chrome o Edge):
 
 #### Método 1: Desde la pestaña "Red" (Recomendado y más confiable)
 1. Abre tu navegador y entra a la web donde inicias sesión en tu panel de fotógrafo de **Lumepic**.

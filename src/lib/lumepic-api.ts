@@ -1,4 +1,7 @@
+import fs from "fs";
+import path from "path";
 import { demoSummary } from "./lumepic-demo";
+import { getDb } from "./db";
 import type {
   ActivitySale,
   ConsolidatedPoint,
@@ -28,6 +31,38 @@ export type ProfileConfig = {
 };
 
 const lumepicCache = new Map<string, CacheEntry>();
+
+async function getCachedSales(ids: string[]): Promise<Record<string, Sale>> {
+  const result: Record<string, Sale> = {};
+  if (ids.length === 0) return result;
+  try {
+    const db = await getDb();
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = await db.all(`SELECT id, data FROM sales_cache WHERE id IN (${placeholders})`, ...ids);
+    for (const row of rows) {
+      if (row.data) {
+        result[row.id] = JSON.parse(row.data) as Sale;
+      }
+    }
+  } catch (err) {
+    console.error("Error batch loading cached sales from SQLite:", err);
+  }
+  return result;
+}
+
+async function setCachedSale(id: string, sale: Sale): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.run(
+      "INSERT OR REPLACE INTO sales_cache (id, data, details_loaded) VALUES (?, ?, ?)",
+      id,
+      JSON.stringify(sale),
+      sale.detailsLoaded ? 1 : 0
+    );
+  } catch (err) {
+    console.error("Error setting cached sale to SQLite:", err);
+  }
+}
 
 function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
@@ -220,7 +255,7 @@ function normalizeSale(record: AnyRecord): Sale {
     id: stringFrom(record, ["id", "uuid", "_id"], "sale"),
     buyer: buyerInfo.name,
     buyerEmail: buyerInfo.email,
-    album: stringFrom(album, ["title", "name"], nestedString(record, ["albumName"], "Album")),
+    album: stringFrom(album, ["title", "name"], nestedString(record, ["albumName"], "Album")).trim(),
     activity: stringFrom(activity, ["name", "title"], nestedString(record, ["activityName"], "General")),
     status: stringFrom(record, ["status"], "approved"),
     date: stringFrom(record, ["createdAt", "created_at", "approvedAt", "date"], new Date().toISOString()),
@@ -242,7 +277,8 @@ function normalizePhotograph(record: AnyRecord): SalePhotograph {
     thumbnailUrl: stringFrom(record, ["thumbnailUrl"], ""),
     url: stringFrom(record, ["url"], ""),
     originalFileName: stringFrom(record, ["originalFileName"], ""),
-    albumId: stringFrom(record, ["albumId"], "")
+    albumId: stringFrom(record, ["albumId"], ""),
+    takenDate: stringFrom(record, ["takenDate"], "")
   };
 }
 
@@ -291,7 +327,7 @@ function normalizeDetailedSale(
     id: stringFrom(record, ["id", "uuid", "_id"], stringFrom(summaryRecord, ["id"], "sale")),
     buyer: buyerInfo.name,
     buyerEmail: buyerInfo.email,
-    album: stringFrom(firstAlbum, ["description", "title", "name"], stringFrom(firstEvent, ["name"], "Album")),
+    album: stringFrom(firstAlbum, ["description", "title", "name"], stringFrom(firstEvent, ["name"], "Album")).trim(),
     activity: stringFrom(firstActivity, ["name", "title"], "General"),
     status: stringFrom(record, ["status"], stringFrom(summaryRecord, ["status"], "approved")),
     date: stringFrom(record, ["createdAt", "created_at", "approvedAt", "date"], new Date().toISOString()),
@@ -312,10 +348,13 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
   let failed = 0;
   
   const chunkSize = 10;
-  const maxDetailedSales = 100;
+  const maxDetailedSales = 500;
 
   for (let i = 0; i < salesRows.length; i += chunkSize) {
     const chunk = salesRows.slice(i, i + chunkSize);
+    const ids = chunk.map((sale) => stringFrom(sale, ["id"], "")).filter(Boolean);
+    const cachedSales = await getCachedSales(ids);
+
     const promises = chunk.map(async (sale, index) => {
       const globalIndex = i + index;
       const id = stringFrom(sale, ["id"], "");
@@ -324,13 +363,24 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
         return normalizeSale(sale);
       }
 
+      // Check if details are already cached in SQLite
+      const cached = cachedSales[id];
+      if (cached && cached.detailsLoaded) {
+        return cached;
+      }
+
       try {
         const [detail, photographsRaw] = await Promise.all([
           lumepicFetch(`/sales/${id}`, token, bypassCache),
           lumepicFetch(`/sales/${id}/photographs?pagination[limit]=20&pagination[skip]=0`, token, bypassCache)
             .catch(() => ({ eventPhotographs: [], albumPhotographs: [] }))
         ]);
-        return normalizeDetailedSale(asRecord(detail), sale, sellerId, normalizeSalePhotographs(photographsRaw));
+        const normalized = normalizeDetailedSale(asRecord(detail), sale, sellerId, normalizeSalePhotographs(photographsRaw));
+        
+        // Update cache in SQLite
+        await setCachedSale(id, normalized);
+        
+        return normalized;
       } catch {
         failed += 1;
         return normalizeSale(sale);

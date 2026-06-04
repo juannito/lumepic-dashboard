@@ -28,3 +28,21 @@ Thumbs.db
 
 # Local Data Cache
 clients.json
+
+# SQLite Database and journal/wal files
+data.db
+data.db-journal
+data.db-shm
+data.db-wal
+
+# Local backup files
+*.json.bak
+*.corrupted
+
+# Temporary scratch and test files
+scratch/
+reconstructed_dashboard_raw.txt
+inspect_view_file_ranges.py
+test-*.html
+test-*.js
+

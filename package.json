@@ -1,6 +1,6 @@
 {
   "name": "lumepic-sales-dashboard",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "private": true,
   "scripts": {
     "dev": "next dev -p 4000",
@@ -13,7 +13,9 @@
     "next": "^16.2.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "recharts": "^2.15.3"
+    "recharts": "^2.15.3",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.19",

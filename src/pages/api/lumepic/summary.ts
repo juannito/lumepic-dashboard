@@ -9,7 +9,8 @@ export default async function handler(
   try {
     const limitQuery = request.query.limit ? parseInt(request.query.limit as string, 10) : 500;
     const limit = isNaN(limitQuery) ? 500 : limitQuery;
-    const dashboard = await getLumepicDashboard(limit);
+    const bypassCache = request.query.bypassCache === "true" || request.query.refresh === "true";
+    const dashboard = await getLumepicDashboard(limit, bypassCache);
     response.status(200).json(dashboard);
   } catch (error) {
     response.status(500).json({

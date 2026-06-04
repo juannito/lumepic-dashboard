@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,24 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Script
+          id="tfjs"
+          src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"
+          strategy="beforeInteractive"
+        />
+        <Script
+          id="coco-ssd"
+          src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"
+          strategy="beforeInteractive"
+        />
+        <Script
+          id="face-detection"
+          src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"
+          strategy="beforeInteractive"
+        />
+      </body>
     </html>
   );
 }

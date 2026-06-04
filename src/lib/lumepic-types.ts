@@ -57,6 +57,7 @@ export type SalePhotograph = {
   url: string;
   originalFileName: string;
   albumId: string;
+  takenDate?: string;
 };
 
 export type PhotographerProfile = {
@@ -133,3 +134,18 @@ export type DashboardPayload = {
   source: "live" | "demo";
   warning?: string;
 };
+
+export interface CustomSubEvent {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  localDirName?: string | null;
+}
+
+export interface CustomEvent {
+  id: string;
+  name: string;
+  albumIds: string[];
+  subEvents: CustomSubEvent[];
+  localDirName?: string | null;
+}
