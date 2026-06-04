@@ -5922,6 +5922,55 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   return (
     <>
+      {/* Notice Card for Experimental Feature */}
+      <div style={{
+        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
+        border: "1px solid rgba(99, 102, 241, 0.15)",
+        borderRadius: "16px",
+        padding: "16px 20px",
+        marginBottom: "24px",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "16px",
+        boxShadow: "0 4px 20px rgba(99, 102, 241, 0.03)"
+      }}>
+        <div style={{
+          background: "var(--accent, #6366f1)",
+          color: "#fff",
+          borderRadius: "12px",
+          padding: "10px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)"
+        }}>
+          <Sparkles size={20} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <h3 style={{
+            fontSize: "0.95rem",
+            fontWeight: "800",
+            margin: "0 0 4px 0",
+            color: "var(--ink)",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}>
+            {language === "es" ? "🧪 Función Experimental en Desarrollo" : "🧪 Experimental Feature under Development"}
+          </h3>
+          <p style={{
+            fontSize: "0.82rem",
+            color: "var(--muted)",
+            lineHeight: "1.45",
+            margin: 0
+          }}>
+            {language === "es"
+              ? "Esta sección de AI Culling está en desarrollo activo y se presenta a modo experimental. Aún requiere ajustes finos, testing exhaustivo y optimizaciones de rendimiento. Siéntete libre de probarla y experimentar con la detección automática de nitidez y ojos cerrados."
+              : "This AI Culling section is under active development and is presented as an experimental feature. It still requires fine-tuning, thorough testing, and performance optimization. Feel free to try it out and experiment with automatic sharpness and closed-eye detection."}
+          </p>
+        </div>
+      </div>
+
       <section className="culling-stats">
         <article className="culling-stat-box">
           <span>{language === "es" ? "Fotos Totales" : "Total Photos"}</span>
@@ -6135,20 +6184,45 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       {/* cull execution button */}
       {processedImages.length > 0 && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "20px" }}>
-          <button
-            className="text-button"
-            onClick={handleCullImages}
-            style={{
-              height: "40px",
-              padding: "0 16px",
-              background: "var(--red, #ef4444)",
-              color: "var(--white)",
-              fontWeight: "700"
-            }}
-          >
-            <Trash2 size={16} style={{ marginRight: 6 }} />
-            {language === "es" ? "Iniciar Culling (Rechazar)" : "Start Culling (Reject)"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "0.78rem",
+              color: "var(--muted)",
+              background: "var(--paper-2, rgba(0,0,0,0.02))",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--line-soft)",
+              maxWidth: "360px",
+              textAlign: "right"
+            }}>
+              <HelpCircle size={14} style={{ flexShrink: 0, color: "var(--accent)" }} />
+              <span>
+                {language === "es"
+                  ? "Mueve físicamente las fotos por debajo del umbral a una subcarpeta 'REJECTED' (o genera un script si no hay soporte nativo)."
+                  : "Physically moves files below the threshold to a 'REJECTED' subfolder (or generates a script if native access is unsupported)."}
+              </span>
+            </div>
+            <button
+              className="text-button"
+              onClick={handleCullImages}
+              style={{
+                height: "40px",
+                padding: "0 16px",
+                background: "var(--red, #ef4444)",
+                color: "var(--white)",
+                fontWeight: "700",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px"
+              }}
+            >
+              <Trash2 size={16} />
+              {language === "es" ? "Iniciar Culling (Rechazar)" : "Start Culling (Reject)"}
+            </button>
+          </div>
         </div>
       )}
 
