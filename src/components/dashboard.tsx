@@ -7439,9 +7439,6 @@ export function Dashboard() {
 
     return () => {
       active = false;
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
-      }
     };
   }, [activeLightboxPhoto, localDirHandle, localDirName, customEvents, permissionRetry, resolvedLocalUrls]);
 
