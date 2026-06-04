@@ -469,7 +469,6 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     
     // gallery view
     galleryTitle: "Sold Gallery Archive",
-    galleryDesc: "Quick access to all high-resolution purchased photos across all profiles.",
 
     // Export Modal
     exportModalTitle: "Export Data",
@@ -655,7 +654,6 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     
     // gallery view
     galleryTitle: "Archivo de Galería Vendida",
-    galleryDesc: "Acceso rápido a todas las fotos compradas en alta resolución de todos los perfiles.",
 
     // Export Modal
     exportModalTitle: "Exportar Datos",
@@ -3340,7 +3338,6 @@ function GalleryDashboard({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h2>{t.galleryTitle}</h2>
-              <p>{t.galleryDesc}</p>
             </div>
             <Images size={22} style={{ color: "var(--muted)" }} />
           </div>
@@ -3465,15 +3462,8 @@ function GalleryDashboard({
                     alt={item.originalFileName} 
                     loading="lazy"
                   />
-                  <div className="photo-card-overlay">
-                    <span className="overlay-badge">{language === "es" ? "Detalle" : "Detail"}</span>
-                  </div>
-                  {isComped ? (
+                  {isComped && (
                     <span className="buyer-badge is-comped">Lumepic</span>
-                  ) : (
-                    <span className="buyer-badge is-paid" title={buyerName}>
-                      {buyerName}
-                    </span>
                   )}
                 </div>
                 
@@ -6250,6 +6240,12 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 // Helper to resolve a photo's date
 function getPhotoDate(photo: SalePhotograph, sale: Sale, albumMap: Record<string, AlbumInsight>): string {
   if (photo.takenDate) {
+    if (typeof photo.takenDate === "string" && photo.takenDate.length >= 10 && photo.takenDate.includes("-")) {
+      const parts = photo.takenDate.split("T")[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) {
+        return parts;
+      }
+    }
     try {
       const d = new Date(photo.takenDate);
       if (!isNaN(d.getTime())) {
@@ -7355,11 +7351,12 @@ export function Dashboard() {
         let dirHandle = null;
         let dirName = null;
         const matchedEvent = customEvents.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+        const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
+        let matchedSubEvent = null;
         
         if (matchedEvent) {
           // A. Try sub-event folder first if photo date maps to a sub-event with configured directory
-          const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
-          const matchedSubEvent = matchedEvent.subEvents.find(s => s.date === photoDate);
+          matchedSubEvent = matchedEvent.subEvents.find(s => s.date === photoDate);
           
           if (matchedSubEvent && matchedSubEvent.localDirName) {
             dirHandle = await getLocalDirectoryHandleForSubEvent(matchedEvent.id, matchedSubEvent.id);
@@ -7373,11 +7370,30 @@ export function Dashboard() {
           }
         }
         
-        // C. Fallback to global directory folder if no event or sub-event folder is configured
-        if (!dirName) {
+        // C. Fallback to global directory folder if no event or sub-event folder is configured or handle is null
+        if (!dirHandle) {
           dirHandle = localDirHandle;
-          dirName = localDirName;
+          if (!dirName) {
+            dirName = localDirName;
+          }
         }
+
+        // Debugging logs to trace path resolution
+        console.log("[searchPhoto] Active Photo:", {
+          id: activeLightboxPhoto.id,
+          fileName: activeLightboxPhoto.originalFileName,
+          albumId: activeLightboxPhoto.albumId,
+          takenDate: activeLightboxPhoto.takenDate,
+          resolvedDate: photoDate
+        });
+        console.log("[searchPhoto] Resolution Info:", {
+          matchedEventName: matchedEvent?.name,
+          matchedSubEventName: matchedSubEvent?.name,
+          matchedSubEventDirName: matchedSubEvent?.localDirName,
+          resolvedDirName: dirName,
+          resolvedDirHandleName: dirHandle?.name || "null",
+          usingGlobalFallback: dirHandle === localDirHandle && !!localDirHandle
+        });
 
         if (!active) return;
         setActiveDirHandle(dirHandle);
@@ -7440,7 +7456,7 @@ export function Dashboard() {
     return () => {
       active = false;
     };
-  }, [activeLightboxPhoto, localDirHandle, localDirName, customEvents, permissionRetry, resolvedLocalUrls]);
+  }, [activeLightboxPhoto, localDirHandle, localDirName, customEvents, permissionRetry, resolvedLocalUrls, albumMap]);
 
   const handleOpenLightbox = (photo: GalleryPhotoItem, list?: GalleryPhotoItem[]) => {
     setActiveLightboxPhoto(photo);
