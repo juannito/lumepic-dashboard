@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle2,
   CircleDollarSign,
+  Coins,
   Clock,
   Copy,
   Download,
@@ -373,6 +374,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     
     // KPI
     totalRevenue: "Total Revenue",
+    totalGross: "Total Gross",
     totalSales: "Total Sales",
     photosSold: "Photos Sold",
     avgOrder: "Avg Order",
@@ -383,11 +385,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     discounts: "Discounts",
     serviceFee: "Service Fee",
     netFinal: "Net earnings (after commissions)",
+    grossNote: "Gross earnings before Lumepic commission (net of Stripe fee)",
     beforeDiscounts: "Before discounts",
     promosAndComps: "Promos & comps",
-    commProcessing: "Commissions & processing",
+    commProcessing: "Lumepic platform commission",
     netRevenueHelp: "Net earnings after commissions and processing fees have been deducted",
-    grossRevenueHelp: "Gross earnings before commissions and processing fees are deducted",
+    grossRevenueHelp: "Gross earnings minus Stripe processing fees (before Lumepic commissions)",
     
     // Cruce por perfil
     profileCross: "Profile Cross-Reference",
@@ -558,6 +561,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     
     // KPI
     totalRevenue: "Ingresos Totales",
+    totalGross: "Ingresos Brutos (Gross)",
     totalSales: "Ventas Totales",
     photosSold: "Fotos Vendidas",
     avgOrder: "Ticket Medio",
@@ -568,11 +572,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     discounts: "Descuentos",
     serviceFee: "Service Fee",
     netFinal: "Ganancias netas (comisiones deducidas)",
+    grossNote: "Venta bruta antes de comisión de Lumepic (neto de Stripe)",
     beforeDiscounts: "Antes de descuentos",
     promosAndComps: "Promos y bonificaciones",
-    commProcessing: "Comision y processing",
+    commProcessing: "Comisión de plataforma de Lumepic",
     netRevenueHelp: "Ganancias netas tras deducir comisiones y tasas de procesamiento",
-    grossRevenueHelp: "Ingresos brutos antes de deducir comisiones y tasas de procesamiento",
+    grossRevenueHelp: "Ingresos brutos menos comisiones de Stripe (antes de la comisión de Lumepic)",
     
     // Cruce por perfil
     profileCross: "Cruce por perfil",
@@ -884,17 +889,47 @@ function Kpi({
 
 function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals"]; language?: Language }) {
   const t = TRANSLATIONS[language];
+
+  const formatSalesOrOrders = (val: number) => {
+    if (typeof val !== "number") return String(val);
+    return val % 1 === 0 ? String(val) : val.toFixed(1);
+  };
+
   return (
     <section className="kpi-grid" aria-label="Metricas principales">
       <Kpi label={t.totalRevenue} value={money.format(totals.revenue)} note={t.netFinal} icon={<BadgeDollarSign size={20} />} tooltip={t.netRevenueHelp} />
-      <Kpi label={t.subtotal} value={money.format(totals.subtotal)} note={t.beforeDiscounts} icon={<CircleDollarSign size={20} />} tooltip={t.grossRevenueHelp} />
+      <Kpi label={t.totalGross} value={money.format(totals.grossRevenue)} note={t.grossNote} icon={<CircleDollarSign size={20} />} tooltip={t.grossRevenueHelp} />
+      <Kpi label={t.subtotal} value={money.format(totals.subtotal)} note={t.beforeDiscounts} icon={<Coins size={20} />} tooltip={language === "es" ? "Venta acumulada antes de aplicar descuentos y comisiones" : "Accumulated sales before applying discounts and commissions"} />
       <Kpi label={t.discounts} value={`-${money.format(totals.discounts)}`} note={t.promosAndComps} icon={<TrendingUp size={20} />} />
-      <Kpi label={t.serviceFee} value={`-${money.format(totals.fees)}`} note={t.commProcessing} icon={<Activity size={20} />} />
-      <Kpi label={language === "es" ? "Ventas reales" : "Real sales"} value={String(totals.sales)} note={`${totals.orders} ${language === "es" ? "ordenes aprobadas" : "approved orders"}`} icon={<ShoppingBag size={20} />} />
+      <Kpi 
+        label={t.serviceFee} 
+        value={`-${money.format(totals.fees)}`} 
+        note={t.commProcessing} 
+        icon={<Activity size={20} />} 
+        tooltip={totals.stripeFee ? (
+          language === "es"
+            ? `Total comisiones: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
+            : `Total service fee: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
+        ) : undefined}
+      />
+      <Kpi label={language === "es" ? "Ventas reales" : "Real sales"} value={formatSalesOrOrders(totals.sales)} note={`${formatSalesOrOrders(totals.orders)} ${language === "es" ? "ordenes aprobadas" : "approved orders"}`} icon={<ShoppingBag size={20} />} />
       <Kpi label={t.avgOrder} value={money.format(totals.avgOrder)} note={language === "es" ? "Bruto por venta real" : "Gross per real sale"} icon={<TrendingUp size={20} />} />
       <Kpi label={language === "es" ? "Álbumes" : "Albums"} value={String(totals.albums)} note={language === "es" ? "Publicados" : "Published"} icon={<Album size={20} />} />
-      <Kpi label={t.photosSold} value={compact.format(totals.photos)} note={`${compact.format(totals.publishedPhotos)} ${language === "es" ? "publicadas" : "published"}`} icon={<Images size={20} />} />
-      <Kpi label={t.ratio} value={`${totals.conversion.toFixed(2)}%`} note={language === "es" ? "Fotos vendidas/publicadas" : "Photos sold/published"} icon={<Eye size={20} />} />
+      <Kpi 
+        label={t.photosSold} 
+        value={compact.format(totals.photos)} 
+        note={totals.publishedPhotos > 0 
+          ? `${compact.format(totals.publishedPhotos)} ${language === "es" ? "publicadas" : "published"}`
+          : (language === "es" ? "Sin datos de publicación" : "No publication data")
+        } 
+        icon={<Images size={20} />} 
+      />
+      <Kpi 
+        label={t.ratio} 
+        value={totals.publishedPhotos > 0 ? `${totals.conversion.toFixed(2)}%` : "-"} 
+        note={language === "es" ? "Fotos vendidas/publicadas" : "Photos sold/published"} 
+        icon={<Eye size={20} />} 
+      />
     </section>
   );
 }
@@ -1293,7 +1328,8 @@ function ConsolidatedDashboard({
   setCustomEnd,
   availableYears,
   allProfiles,
-  language = "en"
+  language = "en",
+  customEvents = []
 }: {
   consolidated: ConsolidatedSummary;
   trendData: ConsolidatedPoint[];
@@ -1308,9 +1344,280 @@ function ConsolidatedDashboard({
   availableYears: number[];
   allProfiles: DashboardSummary[];
   language?: Language;
+  customEvents?: CustomEvent[];
 }) {
   const [metric, setMetric] = useState<"revenue" | "photos">("revenue");
+  const [selectedEventFilter, setSelectedEventFilter] = useState<string>("all");
   const t = TRANSLATIONS[language];
+
+  const allAlbumTitles = useMemo(() => {
+    const titles = new Set<string>();
+    allProfiles.forEach(profile => {
+      profile.albums.forEach(album => {
+        if (album.title) {
+          titles.add(album.title);
+        }
+      });
+    });
+    return Array.from(titles).sort();
+  }, [allProfiles]);
+
+  const albumMap = useMemo(() => {
+    const map: Record<string, AlbumInsight> = {};
+    allProfiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
+        map[album.id] = album;
+      });
+    });
+    return map;
+  }, [allProfiles]);
+
+  const filteredChartData = useMemo(() => {
+    const now = new Date();
+    const matchesFilter = (saleDate: Date) => {
+      if (filterType === "7d") {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(now.getDate() - 7);
+        sevenDaysAgo.setHours(0, 0, 0, 0);
+        return saleDate >= sevenDaysAgo;
+      }
+      if (filterType === "15d") {
+        const fifteenDaysAgo = new Date();
+        fifteenDaysAgo.setDate(now.getDate() - 15);
+        fifteenDaysAgo.setHours(0, 0, 0, 0);
+        return saleDate >= fifteenDaysAgo;
+      }
+      if (filterType === "ytd") {
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        return saleDate >= startOfYear;
+      }
+      if (filterType === "year") {
+        return saleDate.getFullYear() === selectedYear;
+      }
+      if (filterType === "custom") {
+        if (customStart) {
+          const start = new Date(customStart + "T00:00:00");
+          if (saleDate < start) return false;
+        }
+        if (customEnd) {
+          const end = new Date(customEnd + "T23:59:59");
+          if (saleDate > end) return false;
+        }
+        return true;
+      }
+      return true;
+    };
+
+    if (selectedEventFilter === "all") {
+      return trendData;
+    }
+
+    let targetCustomEvent: CustomEvent | null = null;
+    let targetAlbumTitle: string | null = null;
+
+    if (selectedEventFilter.startsWith("custom:")) {
+      const id = selectedEventFilter.replace("custom:", "");
+      targetCustomEvent = customEvents.find(e => e.id === id) || null;
+    } else if (selectedEventFilter.startsWith("album:")) {
+      targetAlbumTitle = selectedEventFilter.replace("album:", "");
+    }
+
+    const hasSubEvents = targetCustomEvent && targetCustomEvent.subEvents && targetCustomEvent.subEvents.length > 0;
+
+    const groups: Record<string, {
+      date: Date;
+      label: string;
+      totalRevenue: number;
+      totalPhotos: number;
+      totalSales: number;
+      [lineId: string]: any;
+    }> = {};
+
+    allProfiles.forEach((profile) => {
+      profile.sales.forEach((sale) => {
+        if (sale.isComped) return;
+
+        const saleDate = new Date(sale.date);
+        if (isNaN(saleDate.getTime())) return;
+        if (!matchesFilter(saleDate)) return;
+
+        let isMatch = false;
+        if (targetCustomEvent) {
+          const matchesPhotoAlbum = sale.photographs?.some(p => targetCustomEvent!.albumIds.includes(p.albumId));
+          const matchesAlbumTitle = targetCustomEvent.albumIds.some(aid => {
+            const alb = albumMap[aid];
+            return alb && isAlbumMatch(sale.album, alb.title);
+          });
+          isMatch = matchesPhotoAlbum || matchesAlbumTitle;
+        } else if (targetAlbumTitle) {
+          isMatch = isAlbumMatch(sale.album, targetAlbumTitle);
+        }
+
+        if (!isMatch) return;
+
+        const key = toLocalYYYYMMDD(saleDate);
+        if (!groups[key]) {
+          const label = saleDate.toLocaleDateString("es-AR", { month: "short", day: "2-digit" });
+          groups[key] = {
+            date: saleDate,
+            label,
+            totalRevenue: 0,
+            totalPhotos: 0,
+            totalSales: 0,
+          };
+          
+          if (hasSubEvents) {
+            targetCustomEvent!.subEvents.forEach(sub => {
+              groups[key][`${sub.id}_revenue`] = 0;
+              groups[key][`${sub.id}_photos`] = 0;
+            });
+            groups[key][`unclassified_revenue`] = 0;
+            groups[key][`unclassified_photos`] = 0;
+          } else {
+            allProfiles.forEach(p => {
+              groups[key][`${p.id}_revenue`] = 0;
+              groups[key][`${p.id}_photos`] = 0;
+            });
+          }
+        }
+
+        groups[key].totalRevenue += sale.total;
+        groups[key].totalPhotos += (sale.photos || 0);
+        groups[key].totalSales += 1;
+
+        if (hasSubEvents) {
+          const photos = sale.photographs || [];
+          if (photos.length > 0) {
+            const allocations: Record<string, number> = {};
+            let unclassifiedCount = 0;
+
+            photos.forEach(p => {
+              const photoDate = getPhotoDate(p, sale, albumMap);
+              const matchedSub = targetCustomEvent!.subEvents.find(s => s.date === photoDate);
+              if (matchedSub) {
+                allocations[matchedSub.id] = (allocations[matchedSub.id] || 0) + 1;
+              } else {
+                unclassifiedCount += 1;
+              }
+            });
+
+            const totalPhotos = photos.length;
+            Object.entries(allocations).forEach(([subId, count]) => {
+              const ratio = count / totalPhotos;
+              groups[key][`${subId}_revenue`] = (groups[key][`${subId}_revenue`] || 0) + (sale.total * ratio);
+              groups[key][`${subId}_photos`] = (groups[key][`${subId}_photos`] || 0) + ((sale.photos || 0) * ratio);
+            });
+
+            if (unclassifiedCount > 0) {
+              const ratio = unclassifiedCount / totalPhotos;
+              groups[key][`unclassified_revenue`] = (groups[key][`unclassified_revenue`] || 0) + (sale.total * ratio);
+              groups[key][`unclassified_photos`] = (groups[key][`unclassified_photos`] || 0) + ((sale.photos || 0) * ratio);
+            }
+          } else {
+            groups[key][`unclassified_revenue`] = (groups[key][`unclassified_revenue`] || 0) + sale.total;
+            groups[key][`unclassified_photos`] = (groups[key][`unclassified_photos`] || 0) + (sale.photos || 0);
+          }
+        } else {
+          groups[key][`${profile.id}_revenue`] = (groups[key][`${profile.id}_revenue`] || 0) + sale.total;
+          groups[key][`${profile.id}_photos`] = (groups[key][`${profile.id}_photos`] || 0) + (sale.photos || 0);
+        }
+      });
+    });
+
+    const sortedKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+
+    return sortedKeys.map((key) => {
+      const g = groups[key];
+      const point: any = {
+        label: g.label,
+        totalRevenue: Number(g.totalRevenue.toFixed(2)),
+        totalPhotos: g.totalPhotos,
+        totalSales: g.totalSales,
+      };
+
+      if (hasSubEvents) {
+        targetCustomEvent!.subEvents.forEach(sub => {
+          point[`${sub.id}_revenue`] = Number((g[`${sub.id}_revenue`] || 0).toFixed(2));
+          point[`${sub.id}_photos`] = Math.round(g[`${sub.id}_photos`] || 0);
+        });
+        point[`unclassified_revenue`] = Number((g[`unclassified_revenue`] || 0).toFixed(2));
+        point[`unclassified_photos`] = Math.round(g[`unclassified_photos`] || 0);
+      } else {
+        allProfiles.forEach((p) => {
+          point[`${p.id}_revenue`] = Number((g[`${p.id}_revenue`] || 0).toFixed(2));
+          point[`${p.id}_photos`] = Math.round(g[`${p.id}_photos`] || 0);
+        });
+      }
+
+      return point;
+    });
+  }, [trendData, selectedEventFilter, customEvents, allProfiles, filterType, selectedYear, customStart, customEnd, albumMap]);
+
+  const chartLines = useMemo(() => {
+    let targetCustomEvent: CustomEvent | null = null;
+    if (selectedEventFilter.startsWith("custom:")) {
+      const id = selectedEventFilter.replace("custom:", "");
+      targetCustomEvent = customEvents.find(e => e.id === id) || null;
+    }
+
+    const hasSubEvents = targetCustomEvent && targetCustomEvent.subEvents && targetCustomEvent.subEvents.length > 0;
+
+    if (hasSubEvents) {
+      const colors = ["var(--accent, #6366f1)", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+      const lines: { dataKey: string; name: string; color: string; strokeWidth: number }[] = [];
+
+      targetCustomEvent!.subEvents.forEach((sub, idx) => {
+        lines.push({
+          dataKey: metric === "revenue" ? `${sub.id}_revenue` : `${sub.id}_photos`,
+          name: sub.name,
+          color: colors[idx % colors.length],
+          strokeWidth: 4
+        });
+      });
+
+      const hasUnclassified = filteredChartData.some(pt => {
+        const val = metric === "revenue" ? pt.unclassified_revenue : pt.unclassified_photos;
+        return val && val > 0;
+      });
+
+      if (hasUnclassified) {
+        lines.push({
+          dataKey: metric === "revenue" ? "unclassified_revenue" : "unclassified_photos",
+          name: language === "es" ? "Otros" : "Others",
+          color: "#9ca3af",
+          strokeWidth: 2
+        });
+      }
+
+      lines.push({
+        dataKey: metric === "revenue" ? "totalRevenue" : "totalPhotos",
+        name: "Total",
+        color: "var(--ink, #000000)",
+        strokeWidth: 2
+      });
+
+      return lines;
+    } else {
+      const lines: { dataKey: string; name: string; color: string; strokeWidth: number }[] = [];
+      consolidated.profiles.forEach((profile) => {
+        lines.push({
+          dataKey: metric === "revenue" ? `${profile.id}_revenue` : `${profile.id}_photos`,
+          name: profile.label,
+          color: profile.color,
+          strokeWidth: 4
+        });
+      });
+
+      lines.push({
+        dataKey: metric === "revenue" ? "totalRevenue" : "totalPhotos",
+        name: "Total",
+        color: "var(--ink, #000000)",
+        strokeWidth: 2
+      });
+
+      return lines;
+    }
+  }, [selectedEventFilter, customEvents, consolidated.profiles, metric, language, filteredChartData]);
 
   const consolidatedAlbums = useMemo(() => {
     const albumMap: Record<string, AlbumInsight & { netRevenue: number }> = {};
@@ -1350,6 +1657,33 @@ function ConsolidatedDashboard({
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div className="filter-select-wrap">
+                <Calendar size={14} className="select-icon" />
+                <select
+                  value={selectedEventFilter}
+                  onChange={(e) => setSelectedEventFilter(e.target.value)}
+                  aria-label={language === "es" ? "Filtrar por evento o álbum" : "Filter by event or album"}
+                >
+                  <option value="all">{language === "es" ? "Todos los eventos" : "All Events"}</option>
+                  
+                  {customEvents.length > 0 && (
+                    <optgroup label={language === "es" ? "Eventos Agrupados" : "Grouped Events"}>
+                      {customEvents.map(evt => (
+                        <option key={`custom:${evt.id}`} value={`custom:${evt.id}`}>{evt.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  
+                  {allAlbumTitles.length > 0 && (
+                    <optgroup label={language === "es" ? "Álbumes" : "Albums"}>
+                      {allAlbumTitles.map(title => (
+                        <option key={`album:${title}`} value={`album:${title}`}>{title}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
               <div style={{ display: "flex", gap: "4px", background: "var(--paper-2)", padding: "4px", borderRadius: "999px", border: "1px solid var(--line)" }}>
                 <button
                   className={`filter-pill ${metric === "revenue" ? "active" : ""}`}
@@ -1489,13 +1823,13 @@ function ConsolidatedDashboard({
           </div>
         </header>
         <div className="chart-wrap">
-          {trendData.length === 0 ? (
+          {filteredChartData.length === 0 ? (
             <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--muted)", fontSize: "0.9rem" }}>
               {language === "es" ? "Sin ventas en el rango seleccionado" : "No sales in selected range"}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
+              <LineChart data={filteredChartData}>
                 <CartesianGrid stroke="rgba(0,0,0,0.1)" vertical={false} />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} />
                 <YAxis
@@ -1506,25 +1840,17 @@ function ConsolidatedDashboard({
                 <Tooltip
                   formatter={(value) => (metric === "revenue" ? money.format(Number(value)) : `${value} ${language === "es" ? "fotos" : "photos"}`)}
                 />
-                {consolidated.profiles.map((profile) => (
+                {chartLines.map((line) => (
                   <Line
-                    dataKey={metric === "revenue" ? `${profile.id}_revenue` : `${profile.id}_photos`}
+                    dataKey={line.dataKey}
                     dot={false}
-                    key={profile.id}
-                    name={profile.label}
-                    stroke={profile.color}
-                    strokeWidth={4}
+                    key={line.dataKey}
+                    name={line.name}
+                    stroke={line.color}
+                    strokeWidth={line.strokeWidth}
                     type="monotone"
                   />
                 ))}
-                <Line
-                  dataKey={metric === "revenue" ? "totalRevenue" : "totalPhotos"}
-                  dot={false}
-                  name="Total"
-                  stroke="#000000"
-                  strokeWidth={2}
-                  type="monotone"
-                />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -2254,6 +2580,18 @@ function ProfileDashboard({
               <span>{t.tableService}</span>
               <strong>{selectedSale ? `-${money.format(selectedSale.fees)}` : "-"}</strong>
             </div>
+            {selectedSale && selectedSale.stripeFee !== undefined && selectedSale.stripeFee > 0 && (
+              <>
+                <div style={{ paddingLeft: "16px", fontSize: "0.8rem", color: "var(--muted)", borderBottom: "none", paddingTop: "4px", paddingBottom: "4px" }}>
+                  <span>{language === "es" ? "└ Comisión de Stripe" : "└ Stripe Fee"}</span>
+                  <strong>{`-${money.format(selectedSale.stripeFee)}`}</strong>
+                </div>
+                <div style={{ paddingLeft: "16px", fontSize: "0.8rem", color: "var(--muted)", borderBottom: "none", paddingTop: "4px", paddingBottom: "4px" }}>
+                  <span>{language === "es" ? "└ Comisión de Lumepic" : "└ Lumepic Fee"}</span>
+                  <strong>{`-${money.format(Math.max(selectedSale.fees - selectedSale.stripeFee, 0))}`}</strong>
+                </div>
+              </>
+            )}
             <div>
               <span>{t.net}</span>
               <strong>{selectedSale ? money.format(selectedSale.total) : "-"}</strong>
@@ -3224,14 +3562,383 @@ interface GalleryPhotoItem {
   takenDate?: string;
 }
 
+interface GalleryPhotoCardProps {
+  item: GalleryPhotoItem;
+  customEvents: CustomEvent[];
+  globalDirHandle: FileSystemDirectoryHandle | null;
+  albumMap: Record<string, AlbumInsight>;
+  language: Language;
+  onOpenLightbox: () => void;
+  copiedId: string | null;
+  handleCopyFileName: (fileName: string, photoId: string, e: React.MouseEvent) => void;
+  profilesLength: number;
+  resolvedLocalUrls: Record<string, string>;
+  setResolvedLocalUrls: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setVisiblePhotoKeys: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+}
+
+function GalleryPhotoCard({
+  item,
+  customEvents,
+  globalDirHandle,
+  albumMap,
+  language,
+  onOpenLightbox,
+  copiedId,
+  handleCopyFileName,
+  profilesLength,
+  resolvedLocalUrls,
+  setResolvedLocalUrls,
+  setVisiblePhotoKeys
+}: GalleryPhotoCardProps) {
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+  const [localSearchStatus, setLocalSearchStatus] = useState<"idle" | "searching" | "found" | "not_found" | "permission_denied">("idle");
+  const [highResLoaded, setHighResLoaded] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Reset highResLoaded when localUrl changes
+  useEffect(() => {
+    setHighResLoaded(false);
+  }, [localUrl]);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  const cacheKey = `${item.id}_${item.sale.id}`;
+  const cachedUrl = resolvedLocalUrls[cacheKey];
+
+  // Intersection observer to track visibility
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          setIsVisible(entry.isIntersecting);
+        });
+      },
+      { rootMargin: "300px" } // Preload when 300px close to viewport
+    );
+
+    const currentCard = cardRef.current;
+    if (currentCard) {
+      observer.observe(currentCard);
+    }
+
+    return () => {
+      if (currentCard) {
+        observer.unobserve(currentCard);
+      }
+    };
+  }, []);
+
+  // Track visibility in the parent component
+  useEffect(() => {
+    if (isVisible) {
+      setVisiblePhotoKeys(prev => {
+        if (prev[cacheKey]) return prev;
+        return { ...prev, [cacheKey]: true };
+      });
+    } else {
+      setVisiblePhotoKeys(prev => {
+        if (!prev[cacheKey]) return prev;
+        const next = { ...prev };
+        delete next[cacheKey];
+        return next;
+      });
+    }
+
+    return () => {
+      setVisiblePhotoKeys(prev => {
+        if (!prev[cacheKey]) return prev;
+        const next = { ...prev };
+        delete next[cacheKey];
+        return next;
+      });
+    };
+  }, [isVisible, cacheKey, setVisiblePhotoKeys]);
+
+  // Fetch local file and manage Object URL memory
+  useEffect(() => {
+    let active = true;
+
+    async function loadLocalFile() {
+      if (!isVisible) {
+        setLocalUrl(null);
+        setLocalSearchStatus("idle");
+        return;
+      }
+
+      if (cachedUrl) {
+        setLocalUrl(cachedUrl);
+        setLocalSearchStatus("found");
+        return;
+      }
+
+      setLocalSearchStatus("searching");
+
+      try {
+        // 1. Resolve directory handle
+        let dirHandle = null;
+        const matchedEvent = customEvents.find(e => e.albumIds.includes(item.albumId));
+        const photoDate = getPhotoDate(item, item.sale, albumMap);
+        let matchedSubEvent = null;
+
+        if (matchedEvent) {
+          matchedSubEvent = matchedEvent.subEvents.find(s => s.date === photoDate);
+          if (matchedSubEvent && matchedSubEvent.localDirName) {
+            dirHandle = await getLocalDirectoryHandleForSubEvent(matchedEvent.id, matchedSubEvent.id);
+          }
+          if (!dirHandle && matchedEvent.localDirName) {
+            dirHandle = await getLocalDirectoryHandleForEvent(matchedEvent.id);
+          }
+        }
+        if (!dirHandle) {
+          dirHandle = globalDirHandle;
+        }
+
+        if (!dirHandle || !active) {
+          setLocalSearchStatus("not_found");
+          return;
+        }
+
+        // Verify directory permission without prompting
+        const hasPermission = await verifyDirectoryPermission(dirHandle, false);
+        if (!hasPermission || !active) {
+          setLocalSearchStatus("permission_denied");
+          return;
+        }
+
+        const fileName = item.originalFileName;
+        if (!fileName) {
+          setLocalSearchStatus("not_found");
+          return;
+        }
+
+        const fileHandle = await findLocalPhotoHandle(dirHandle, fileName);
+        if (!fileHandle || !active) {
+          setLocalSearchStatus("not_found");
+          return;
+        }
+
+        const file = await fileHandle.getFile();
+        if (!active) return;
+
+        const url = URL.createObjectURL(file);
+        setResolvedLocalUrls(prev => ({ ...prev, [cacheKey]: url }));
+        setLocalUrl(url);
+        setLocalSearchStatus("found");
+      } catch (err) {
+        console.error("Error preloading local photo:", err);
+        if (active) {
+          setLocalSearchStatus("not_found");
+        }
+      }
+    }
+
+    loadLocalFile();
+
+    return () => {
+      active = false;
+    };
+  }, [isVisible, customEvents, globalDirHandle, item, albumMap, cachedUrl, cacheKey, setResolvedLocalUrls]);
+
+  const isComped = item.sale.isComped;
+  const saleDate = new Date(item.sale.date);
+  const hourStr = saleDate.toLocaleTimeString(language === "es" ? "es-AR" : "en-US", { hour: "2-digit", minute: "2-digit" });
+  const dayStr = saleDate.toLocaleDateString(language === "es" ? "es-AR" : "en-US", { day: "2-digit", month: "short", year: "numeric" });
+
+  return (
+    <article 
+      className="photo-card" 
+      ref={cardRef}
+      onClick={onOpenLightbox}
+    >
+      <div className="photo-image-wrap">
+        <img 
+          src={localUrl || item.thumbnailUrl || item.url} 
+          alt={item.originalFileName} 
+          loading="lazy"
+          style={{
+            transition: "opacity 0.3s",
+            opacity: (localUrl && highResLoaded) ? 1 : 0.85
+          }}
+          onLoad={() => {
+            if (localUrl) {
+              setHighResLoaded(true);
+            }
+          }}
+        />
+        {(localSearchStatus === "searching" || (localSearchStatus === "found" && !highResLoaded)) && (
+          <span 
+            className="buyer-badge" 
+            style={{ 
+              position: "absolute", 
+              top: "8px", 
+              left: "8px", 
+              background: "rgba(0, 0, 0, 0.6)", 
+              color: "white", 
+              fontSize: "0.65rem", 
+              padding: "4px 8px", 
+              borderRadius: "4px", 
+              fontWeight: "bold",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            <span style={{
+              width: "8px",
+              height: "8px",
+              border: "1px solid white",
+              borderTopColor: "transparent",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+              display: "inline-block"
+            }} />
+            {language === "es" ? "Buscando alta..." : "Searching HD..."}
+          </span>
+        )}
+        {localSearchStatus === "found" && highResLoaded && (
+          <span 
+            className="buyer-badge" 
+            style={{ 
+              position: "absolute", 
+              top: "8px", 
+              left: "8px", 
+              background: "var(--accent, #6366f1)", 
+              color: "white", 
+              fontSize: "0.65rem", 
+              padding: "4px 8px", 
+              borderRadius: "4px", 
+              fontWeight: "bold" 
+            }}
+          >
+            {language === "es" ? "LOCAL ALTA" : "LOCAL HD"}
+          </span>
+        )}
+        {isComped && (
+          <span className="buyer-badge is-comped">Lumepic</span>
+        )}
+      </div>
+      
+      <div className="photo-card-info">
+        <div className="file-name-row">
+          <span className="file-name" title={item.originalFileName}>
+            {item.originalFileName}
+          </span>
+          <button
+            className="copy-btn"
+            onClick={(e) => handleCopyFileName(item.originalFileName, item.id, e)}
+            title={language === "es" ? "Copiar nombre original" : "Copy original name"}
+          >
+            {copiedId === item.id ? (
+              <Check size={13} style={{ color: "var(--green)" }} />
+            ) : (
+              <Copy size={13} />
+            )}
+          </button>
+        </div>
+
+        <div className="photo-meta-list">
+          <div className="photo-meta-item highlighted-time" title={language === "es" ? "Hora de compra local" : "Local purchase time"}>
+            <Clock size={12} />
+            <strong>{hourStr}</strong>
+            <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>({dayStr})</span>
+          </div>
+          <div className="photo-meta-item" style={{ color: "var(--ink)", fontWeight: "600" }} title={language === "es" ? "Monto de la venta" : "Sale amount"}>
+            <BadgeDollarSign size={12} style={{ color: "var(--muted)" }} />
+            <span>
+              {item.sale.isComped ? (language === "es" ? "Bonificado" : "Comped") : money.format(item.sale.total)}
+            </span>
+            {item.sale.photos > 1 && (
+              <span style={{ fontSize: "0.7rem", color: "var(--muted)", fontWeight: "normal", marginLeft: "4px" }}>
+                {language === "es" ? `(Total de ${item.sale.photos} fotos)` : `(Total for ${item.sale.photos} photos)`}
+              </span>
+            )}
+          </div>
+          
+          {!item.sale.isComped && (
+            <div 
+              className="photo-fee-breakdown" 
+              onClick={(e) => e.stopPropagation()}
+              style={{ 
+                fontSize: "0.72rem", 
+                color: "var(--muted)", 
+                background: "var(--paper-2, rgba(0,0,0,0.02))", 
+                padding: "8px 10px", 
+                borderRadius: "8px", 
+                marginTop: "6px",
+                marginBottom: "6px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "3px",
+                border: "1px dashed var(--line, rgba(0,0,0,0.05))"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>{language === "es" ? "Bruto:" : "Gross:"}</span>
+                <span style={{ fontWeight: "600", color: "var(--ink)" }}>{money.format(item.sale.grossTotal)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--red, #ef4444)", opacity: 0.9 }}>
+                <span>{language === "es" ? "└ Comisión Stripe:" : "└ Stripe Fee:"}</span>
+                <span>-{money.format(item.sale.stripeFee || 0)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--red, #ef4444)", opacity: 0.9 }}>
+                <span>{language === "es" ? "└ Comisión Lumepic:" : "└ Lumepic Fee:"}</span>
+                <span>-{money.format(Math.max(item.sale.fees - (item.sale.stripeFee || 0), 0))}</span>
+              </div>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                borderTop: "1px solid var(--line, rgba(0,0,0,0.08))", 
+                paddingTop: "4px", 
+                marginTop: "2px", 
+                fontWeight: "700", 
+                color: "var(--accent, #6366f1)" 
+              }}>
+                <span>{language === "es" ? "Neto Recibido:" : "Net Received:"}</span>
+                <span>{money.format(item.sale.total)}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="photo-meta-item album-info" title={item.sale.album}>
+            <Album size={12} />
+            <span>{item.sale.album}</span>
+          </div>
+          {profilesLength > 1 && (
+            <div className="profile-indicator-row">
+              <span className="profile-dot" style={{ background: item.profileColor }} />
+              <span>{item.profileName}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function GalleryDashboard({
   profiles,
   language = "en",
-  onOpenLightbox
+  onOpenLightbox,
+  customEvents = [],
+  localDirHandle = null,
+  localDirName = null,
+  resolvedLocalUrls,
+  setResolvedLocalUrls,
+  visiblePhotoKeys,
+  setVisiblePhotoKeys,
+  activeLightboxPhoto
 }: {
   profiles: DashboardSummary[];
   language?: Language;
   onOpenLightbox?: (photo: GalleryPhotoItem, list?: GalleryPhotoItem[]) => void;
+  customEvents?: CustomEvent[];
+  localDirHandle?: FileSystemDirectoryHandle | null;
+  localDirName?: string | null;
+  resolvedLocalUrls: Record<string, string>;
+  setResolvedLocalUrls: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  visiblePhotoKeys: Record<string, boolean>;
+  setVisiblePhotoKeys: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  activeLightboxPhoto: GalleryPhotoItem | null;
 }) {
   const t = TRANSLATIONS[language];
   const [searchQuery, setSearchQuery] = useState("");
@@ -3239,6 +3946,10 @@ function GalleryDashboard({
   const [purchaseType, setPurchaseType] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Pagination states
+  const [visibleCount, setVisibleCount] = useState(10);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Extract all photographs from all sales
   const allPhotos = useMemo(() => {
@@ -3264,6 +3975,17 @@ function GalleryDashboard({
     });
 
     return photosList;
+  }, [profiles]);
+
+  // Map of all albums in the system for quick title/date lookups
+  const albumMap = useMemo(() => {
+    const map: Record<string, AlbumInsight> = {};
+    profiles.forEach(profile => {
+      profile.albums.forEach(album => {
+        map[album.id] = album;
+      });
+    });
+    return map;
   }, [profiles]);
 
   const handleCopyFileName = (fileName: string, photoId: string, e?: React.MouseEvent) => {
@@ -3330,6 +4052,38 @@ function GalleryDashboard({
       ? `Mostrando ${filtered} de ${total} fotos` 
       : `Showing ${filtered} of ${total} photos`;
   }, [allPhotos, filteredPhotos, language]);
+
+  // Reset pagination when filters or items change
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [searchQuery, selectedProfile, purchaseType, sortOrder]);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < filteredPhotos.length) {
+          setVisibleCount(prev => Math.min(prev + 10, filteredPhotos.length));
+        }
+      },
+      { rootMargin: "300px" } // Load early before reaching the screen bottom
+    );
+
+    const currentSentinel = sentinelRef.current;
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [filteredPhotos.length, visibleCount]);
+
+  const visiblePhotos = useMemo(() => {
+    return filteredPhotos.slice(0, visibleCount);
+  }, [filteredPhotos, visibleCount]);
 
   return (
     <>
@@ -3442,70 +4196,51 @@ function GalleryDashboard({
         </section>
       ) : (
         <section className="gallery-grid">
-          {filteredPhotos.map((item, idx) => {
-            const isComped = item.sale.isComped;
-            const buyerName = isComped ? "Lumepic" : item.sale.buyer;
-            const saleDate = new Date(item.sale.date);
-            const hourStr = saleDate.toLocaleTimeString(language === "es" ? "es-AR" : "en-US", { hour: "2-digit", minute: "2-digit" });
-            const dayStr = saleDate.toLocaleDateString(language === "es" ? "es-AR" : "en-US", { day: "2-digit", month: "short", year: "numeric" });
+          {visiblePhotos.map((item, idx) => {
             const cardKey = `${item.sale.id}-${item.id}-${idx}`;
 
             return (
-              <article 
-                className="photo-card" 
+              <GalleryPhotoCard
                 key={cardKey}
-                onClick={() => onOpenLightbox && onOpenLightbox(item, filteredPhotos)}
-              >
-                <div className="photo-image-wrap">
-                  <img 
-                    src={item.thumbnailUrl || item.url} 
-                    alt={item.originalFileName} 
-                    loading="lazy"
-                  />
-                  {isComped && (
-                    <span className="buyer-badge is-comped">Lumepic</span>
-                  )}
-                </div>
-                
-                <div className="photo-card-info">
-                  <div className="file-name-row">
-                    <span className="file-name" title={item.originalFileName}>
-                      {item.originalFileName}
-                    </span>
-                    <button
-                      className="copy-btn"
-                      onClick={(e) => handleCopyFileName(item.originalFileName, item.id, e)}
-                      title={language === "es" ? "Copiar nombre original" : "Copy original name"}
-                    >
-                      {copiedId === item.id ? (
-                        <Check size={13} style={{ color: "var(--green)" }} />
-                      ) : (
-                        <Copy size={13} />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="photo-meta-list">
-                    <div className="photo-meta-item highlighted-time" title={language === "es" ? "Hora de compra local" : "Local purchase time"}>
-                      <Clock size={12} />
-                      <strong>{hourStr}</strong>
-                      <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>({dayStr})</span>
-                    </div>
-                    <div className="photo-meta-item album-info" title={item.sale.album}>
-                      <Album size={12} />
-                      <span>{item.sale.album}</span>
-                    </div>
-                    {profiles.length > 1 && (
-                      <div className="profile-indicator-row">
-                        <span className="profile-dot" style={{ background: item.profileColor }} />
-                        <span>{item.profileName}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </article>
+                item={item}
+                customEvents={customEvents}
+                globalDirHandle={localDirHandle}
+                albumMap={albumMap}
+                language={language}
+                onOpenLightbox={() => onOpenLightbox && onOpenLightbox(item, filteredPhotos)}
+                copiedId={copiedId}
+                handleCopyFileName={handleCopyFileName}
+                profilesLength={profiles.length}
+                resolvedLocalUrls={resolvedLocalUrls}
+                setResolvedLocalUrls={setResolvedLocalUrls}
+                setVisiblePhotoKeys={setVisiblePhotoKeys}
+              />
             );
           })}
+
+          {visibleCount < filteredPhotos.length && (
+            <div 
+              ref={sentinelRef} 
+              style={{ 
+                height: "60px", 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center", 
+                width: "100%", 
+                gridColumn: "1 / -1" 
+              }}
+            >
+              <div 
+                className="pulse" 
+                style={{ 
+                  width: "10px", 
+                  height: "10px", 
+                  borderRadius: "50%", 
+                  background: "var(--accent, #6366f1)" 
+                }} 
+              />
+            </div>
+          )}
         </section>
       )}
     </>
@@ -6377,9 +7112,15 @@ function EventsDashboard({
   onUnlinkSubEventFolder
 }: EventsDashboardProps) {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedSubEventFilter, setSelectedSubEventFilter] = useState<string>("all");
   const userHasSelectedEventRef = useRef(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Reset sub-event filter when active event changes
+  useEffect(() => {
+    setSelectedSubEventFilter("all");
+  }, [selectedEventId]);
 
   // Form states
   const [formName, setFormName] = useState("");
@@ -6525,9 +7266,10 @@ function EventsDashboard({
   };
 
   // Save Event Group
-  const handleSave = () => {
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!formName.trim()) {
-      alert(language === "es" ? "Por favor ingresa un nombre para el evento." : "Please enter an event name.");
+      alert(language === "es" ? "Por favor ingresa un nombre para el evento." : "Please enter a name for the event.");
       return;
     }
     if (formAlbumIds.length === 0) {
@@ -6536,10 +7278,13 @@ function EventsDashboard({
     }
 
     const eventToSave: CustomEvent = {
-      id: isEditing && selectedEvent ? selectedEvent.id : Math.random().toString(36).substring(2, 9),
-      name: formName,
+      id: isEditing && selectedEvent ? selectedEvent.id : `evt-${Date.now()}`,
+      name: formName.trim(),
       albumIds: formAlbumIds,
-      subEvents: formSubEvents.filter(s => s.name.trim() !== ""),
+      subEvents: formSubEvents.map(sub => ({
+        ...sub,
+        localDirName: tempSubeventHandles[sub.id] !== undefined ? (tempSubeventHandles[sub.id]?.name || null) : sub.localDirName
+      })),
       localDirName: isEditing && selectedEvent ? selectedEvent.localDirName : null
     };
 
@@ -6573,7 +7318,36 @@ function EventsDashboard({
     });
 
     // 2. Initialize sub-events tracking
-    const subEventMap: Record<string, { id: string; name: string; date: string; revenue: number; salesCount: number; photosSold: number; localDirName?: string | null }> = {};
+    interface SubEventTotals {
+      revenue: number;
+      grossRevenue: number;
+      subtotal: number;
+      discounts: number;
+      fees: number;
+      stripeFee?: number;
+      sales: number;
+      orders: number;
+      albums: number;
+      publishedPhotos: number;
+      photos: number;
+      avgOrder: number;
+      conversion: number;
+    }
+
+    interface SubEventData {
+      id: string;
+      name: string;
+      date: string;
+      revenue: number;
+      salesCount: number;
+      photosSold: number;
+      localDirName?: string | null;
+      totals: SubEventTotals;
+    }
+
+    const subEventMap: Record<string, SubEventData> = {};
+    const subEventAlbumsMap: Record<string, Set<string>> = {};
+
     selectedEvent.subEvents.forEach(sub => {
       subEventMap[sub.date] = {
         id: sub.id,
@@ -6582,21 +7356,54 @@ function EventsDashboard({
         revenue: 0,
         salesCount: 0,
         photosSold: 0,
-        localDirName: sub.localDirName
+        localDirName: sub.localDirName,
+        totals: {
+          revenue: 0,
+          grossRevenue: 0,
+          subtotal: 0,
+          discounts: 0,
+          fees: 0,
+          stripeFee: 0,
+          sales: 0,
+          orders: 0,
+          albums: 0,
+          publishedPhotos: 0,
+          photos: 0,
+          avgOrder: 0,
+          conversion: 0
+        }
       };
+      subEventAlbumsMap[sub.date] = new Set<string>();
     });
 
+    const unclassifiedAlbums = new Set<string>();
     const unclassified = {
       name: language === "es" ? "Otros / Sin clasificar" : "Others / Unclassified",
       date: "",
       revenue: 0,
       salesCount: 0,
-      photosSold: 0
+      photosSold: 0,
+      totals: {
+        revenue: 0,
+        grossRevenue: 0,
+        subtotal: 0,
+        discounts: 0,
+        fees: 0,
+        stripeFee: 0,
+        sales: 0,
+        orders: 0,
+        albums: 0,
+        publishedPhotos: 0,
+        photos: 0,
+        avgOrder: 0,
+        conversion: 0
+      }
     };
 
     let totalRevenue = 0;
     let totalGrossRevenue = 0;
     let totalFees = 0;
+    let totalStripeFee = 0;
     let totalDiscounts = 0;
     let totalSalesCount = 0;
     let totalPhotosSold = 0;
@@ -6608,9 +7415,18 @@ function EventsDashboard({
       totalRevenue += sale.total;
       totalGrossRevenue += sale.grossTotal;
       totalFees += sale.fees;
+      totalStripeFee += (sale.stripeFee || 0);
       totalDiscounts += sale.discount;
       totalSalesCount += 1;
       totalPhotosSold += sale.photos;
+
+      let matchedAlbumId = "";
+      selectedEvent.albumIds.forEach(aid => {
+        const alb = albumMap[aid];
+        if (alb && isAlbumMatch(sale.album, alb.title)) {
+          matchedAlbumId = aid;
+        }
+      });
 
       const photos = sale.photographs || [];
       if (photos.length > 0) {
@@ -6622,8 +7438,14 @@ function EventsDashboard({
           const photoDate = getPhotoDate(p, sale, albumMap);
           if (photoDate && subEventMap[photoDate]) {
             allocations[photoDate] = (allocations[photoDate] || 0) + 1;
+            if (p.albumId) {
+              subEventAlbumsMap[photoDate].add(p.albumId);
+            }
           } else {
             unclassifiedCount += 1;
+            if (p.albumId) {
+              unclassifiedAlbums.add(p.albumId);
+            }
           }
         });
 
@@ -6631,9 +7453,20 @@ function EventsDashboard({
         // Allocate sale proportionally
         Object.entries(allocations).forEach(([date, count]) => {
           const ratio = count / totalPhotos;
-          subEventMap[date].revenue += sale.total * ratio;
-          subEventMap[date].salesCount += ratio;
-          subEventMap[date].photosSold += sale.photos * ratio;
+          const sub = subEventMap[date];
+          sub.revenue += sale.total * ratio;
+          sub.salesCount += ratio;
+          sub.photosSold += sale.photos * ratio;
+
+          sub.totals.revenue += sale.total * ratio;
+          sub.totals.grossRevenue += (sale.grossTotal - (sale.stripeFee || 0)) * ratio;
+          sub.totals.subtotal += (sale.grossTotal + sale.discount) * ratio;
+          sub.totals.discounts += sale.discount * ratio;
+          sub.totals.fees += (sale.fees - (sale.stripeFee || 0)) * ratio;
+          sub.totals.stripeFee = (sub.totals.stripeFee || 0) + (sale.stripeFee || 0) * ratio;
+          sub.totals.sales += ratio;
+          sub.totals.orders += ratio;
+          sub.totals.photos += sale.photos * ratio;
         });
 
         if (unclassifiedCount > 0) {
@@ -6641,6 +7474,16 @@ function EventsDashboard({
           unclassified.revenue += sale.total * ratio;
           unclassified.salesCount += ratio;
           unclassified.photosSold += sale.photos * ratio;
+
+          unclassified.totals.revenue += sale.total * ratio;
+          unclassified.totals.grossRevenue += (sale.grossTotal - (sale.stripeFee || 0)) * ratio;
+          unclassified.totals.subtotal += (sale.grossTotal + sale.discount) * ratio;
+          unclassified.totals.discounts += sale.discount * ratio;
+          unclassified.totals.fees += (sale.fees - (sale.stripeFee || 0)) * ratio;
+          unclassified.totals.stripeFee = (unclassified.totals.stripeFee || 0) + (sale.stripeFee || 0) * ratio;
+          unclassified.totals.sales += ratio;
+          unclassified.totals.orders += ratio;
+          unclassified.totals.photos += sale.photos * ratio;
         }
       } else {
         // Fallback: match by sale date
@@ -6653,18 +7496,43 @@ function EventsDashboard({
         } catch (_) {}
 
         if (saleDate && subEventMap[saleDate]) {
-          subEventMap[saleDate].revenue += sale.total;
-          subEventMap[saleDate].salesCount += 1;
-          subEventMap[saleDate].photosSold += sale.photos;
+          const sub = subEventMap[saleDate];
+          sub.revenue += sale.total;
+          sub.salesCount += 1;
+          sub.photosSold += sale.photos;
+
+          sub.totals.revenue += sale.total;
+          sub.totals.grossRevenue += sale.grossTotal - (sale.stripeFee || 0);
+          sub.totals.subtotal += sale.grossTotal + sale.discount;
+          sub.totals.discounts += sale.discount;
+          sub.totals.fees += sale.fees - (sale.stripeFee || 0);
+          sub.totals.stripeFee = (sub.totals.stripeFee || 0) + (sale.stripeFee || 0);
+          sub.totals.sales += 1;
+          sub.totals.orders += 1;
+          sub.totals.photos += sale.photos;
+          if (matchedAlbumId) {
+            subEventAlbumsMap[saleDate].add(matchedAlbumId);
+          }
         } else {
           unclassified.revenue += sale.total;
           unclassified.salesCount += 1;
           unclassified.photosSold += sale.photos;
+
+          unclassified.totals.revenue += sale.total;
+          unclassified.totals.grossRevenue += sale.grossTotal - (sale.stripeFee || 0);
+          unclassified.totals.subtotal += sale.grossTotal + sale.discount;
+          unclassified.totals.discounts += sale.discount;
+          unclassified.totals.fees += sale.fees - (sale.stripeFee || 0);
+          unclassified.totals.stripeFee = (unclassified.totals.stripeFee || 0) + (sale.stripeFee || 0);
+          unclassified.totals.sales += 1;
+          unclassified.totals.orders += 1;
+          unclassified.totals.photos += sale.photos;
+          if (matchedAlbumId) {
+            unclassifiedAlbums.add(matchedAlbumId);
+          }
         }
       }
     });
-
-    const subEventsList = Object.values(subEventMap).sort((a, b) => a.date.localeCompare(b.date));
 
     // Calculate total published photos for selected albums to get conversion rate
     let totalPublishedPhotos = 0;
@@ -6677,12 +7545,28 @@ function EventsDashboard({
       }
     });
 
+    Object.keys(subEventMap).forEach(date => {
+      const sub = subEventMap[date];
+      sub.totals.avgOrder = sub.totals.sales > 0 ? sub.totals.grossRevenue / sub.totals.sales : 0;
+      sub.totals.albums = subEventAlbumsMap[date].size;
+      sub.totals.publishedPhotos = totalPublishedPhotos;
+      sub.totals.conversion = totalPublishedPhotos ? (sub.totals.photos / totalPublishedPhotos) * 100 : 0;
+    });
+
+    unclassified.totals.avgOrder = unclassified.totals.sales > 0 ? unclassified.totals.grossRevenue / unclassified.totals.sales : 0;
+    unclassified.totals.albums = unclassifiedAlbums.size;
+    unclassified.totals.publishedPhotos = totalPublishedPhotos;
+    unclassified.totals.conversion = totalPublishedPhotos ? (unclassified.totals.photos / totalPublishedPhotos) * 100 : 0;
+
+    const subEventsList = Object.values(subEventMap).sort((a, b) => a.date.localeCompare(b.date));
+
     const eventTotals = {
       revenue: totalRevenue,
-      grossRevenue: totalGrossRevenue,
+      grossRevenue: Math.max(totalGrossRevenue - totalStripeFee, 0),
       subtotal: totalGrossRevenue + totalDiscounts,
       discounts: totalDiscounts,
-      fees: totalFees,
+      fees: Math.max(totalFees - totalStripeFee, 0),
+      stripeFee: totalStripeFee,
       sales: totalSalesCount,
       orders: totalSalesCount,
       albums: selectedEvent.albumIds.length,
@@ -6700,6 +7584,19 @@ function EventsDashboard({
       views: totalViews
     };
   }, [selectedEvent, allProfiles, albumMap, language]);
+
+  // Select which totals to display in the KPI cards (consolidated or specific sub-event)
+  const displayedTotals = useMemo(() => {
+    if (!eventDetails) return null;
+    if (selectedSubEventFilter === "all") {
+      return eventDetails.totals;
+    }
+    if (selectedSubEventFilter === "unclassified") {
+      return eventDetails.unclassified.totals;
+    }
+    const sub = eventDetails.subEvents.find(s => s.id === selectedSubEventFilter);
+    return sub ? sub.totals : eventDetails.totals;
+  }, [eventDetails, selectedSubEventFilter]);
 
   // Back to list
   const handleBackToList = () => {
@@ -6971,34 +7868,73 @@ function EventsDashboard({
       {/* Event Selector Header */}
       <section className="panel" style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--muted)" }}>
-              {language === "es" ? "EVENTO:" : "EVENT:"}
-            </span>
-            <select
-              value={selectedEventId || ""}
-              onChange={(e) => {
-                setSelectedEventId(e.target.value);
-                userHasSelectedEventRef.current = true;
-              }}
-              style={{
-                height: "36px",
-                padding: "0 12px 0 8px",
-                borderRadius: "8px",
-                border: "1px solid var(--line)",
-                background: "var(--paper-2)",
-                color: "var(--ink)",
-                fontWeight: "700",
-                fontSize: "0.88rem",
-                cursor: "pointer"
-              }}
-            >
-              {sortedCustomEvents.map((evt) => (
-                <option key={evt.id} value={evt.id}>
-                  {evt.name}
-                </option>
-              ))}
-            </select>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--muted)" }}>
+                {language === "es" ? "EVENTO:" : "EVENT:"}
+              </span>
+              <select
+                value={selectedEventId || ""}
+                onChange={(e) => {
+                  setSelectedEventId(e.target.value);
+                  userHasSelectedEventRef.current = true;
+                }}
+                style={{
+                  height: "36px",
+                  padding: "0 12px 0 8px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--line)",
+                  background: "var(--paper-2)",
+                  color: "var(--ink)",
+                  fontWeight: "700",
+                  fontSize: "0.88rem",
+                  cursor: "pointer"
+                }}
+              >
+                {sortedCustomEvents.map((evt) => (
+                  <option key={evt.id} value={evt.id}>
+                    {evt.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedEvent && selectedEvent.subEvents && selectedEvent.subEvents.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--muted)" }}>
+                  {language === "es" ? "STATS DE:" : "STATS FOR:"}
+                </span>
+                <select
+                  value={selectedSubEventFilter}
+                  onChange={(e) => setSelectedSubEventFilter(e.target.value)}
+                  style={{
+                    height: "36px",
+                    padding: "0 12px 0 8px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--line)",
+                    background: "var(--paper-2)",
+                    color: "var(--ink)",
+                    fontWeight: "700",
+                    fontSize: "0.88rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  <option value="all">
+                    {language === "es" ? "Todo el Evento (Consolidado)" : "Entire Event (Consolidated)"}
+                  </option>
+                  {eventDetails?.subEvents.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name} ({formatDateOnly(sub.date, language)})
+                    </option>
+                  ))}
+                  {eventDetails && eventDetails.unclassified && eventDetails.unclassified.revenue > 0 && (
+                    <option value="unclassified">
+                      {eventDetails.unclassified.name}
+                    </option>
+                  )}
+                </select>
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: "10px" }}>
@@ -7112,8 +8048,8 @@ function EventsDashboard({
 
       {eventDetails && (
         <>
-          {/* Consolidated KPI Grid */}
-          <KpiGrid totals={eventDetails.totals} language={language} />
+          {/* KPI Grid (Either consolidated or sub-event filtered) */}
+          <KpiGrid totals={displayedTotals || eventDetails.totals} language={language} />
 
           {/* Sub-events Breakdown Section */}
           <section className="panel" style={{ padding: "20px" }}>
@@ -7364,8 +8300,14 @@ export function Dashboard() {
   const [lightboxPhotoList, setLightboxPhotoList] = useState<GalleryPhotoItem[]>([]);
   const [localPhotoUrl, setLocalPhotoUrl] = useState<string | null>(null);
   const [localSearchStatus, setLocalSearchStatus] = useState<"idle" | "searching" | "found" | "not_found" | "permission_denied">("idle");
+  const [lightboxImageLoaded, setLightboxImageLoaded] = useState(false);
   const [localDirHandle, setLocalDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [localDirName, setLocalDirName] = useState<string | null>(null);
+
+  // Reset lightboxImageLoaded when localPhotoUrl changes or activeLightboxPhoto changes
+  useEffect(() => {
+    setLightboxImageLoaded(false);
+  }, [localPhotoUrl, activeLightboxPhoto]);
   
   // Track active folder being searched for current photo (event folder or global fallback)
   const [activeDirHandle, setActiveDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
@@ -7373,6 +8315,30 @@ export function Dashboard() {
   const [copiedLightboxId, setCopiedLightboxId] = useState<string | null>(null);
   const [permissionRetry, setPermissionRetry] = useState(0);
   const [resolvedLocalUrls, setResolvedLocalUrls] = useState<Record<string, string>>({});
+  const [visiblePhotoKeys, setVisiblePhotoKeys] = useState<Record<string, boolean>>({});
+
+  // Clean up resolved local URLs that are no longer needed (neither visible in gallery nor active in lightbox)
+  useEffect(() => {
+    const activeLightboxKey = activeLightboxPhoto ? `${activeLightboxPhoto.id}_${activeLightboxPhoto.sale.id}` : null;
+    
+    setResolvedLocalUrls(prev => {
+      let changed = false;
+      const next = { ...prev };
+      
+      Object.entries(prev).forEach(([key, url]) => {
+        const isCurrentlyOpenInLightbox = key === activeLightboxKey;
+        const isVisibleInGallery = !!visiblePhotoKeys[key];
+        
+        if (!isCurrentlyOpenInLightbox && !isVisibleInGallery) {
+          URL.revokeObjectURL(url);
+          delete next[key];
+          changed = true;
+        }
+      });
+      
+      return changed ? next : prev;
+    });
+  }, [activeLightboxPhoto, visiblePhotoKeys]);
 
   // Load local directory handle on startup
   useEffect(() => {
@@ -8272,8 +9238,11 @@ export function Dashboard() {
         if (cached) {
           const data = JSON.parse(cached) as DashboardPayload;
           
-          // Use cached data immediately if we have connected profiles!
-          if (data && data.profiles && data.profiles.length > 0) {
+          const isStaleCache = data && data.profiles && data.profiles.some(p => p.totals.stripeFee === undefined);
+          if (isStaleCache) {
+            localStorage.removeItem("lumepic_dashboard_cache_v2");
+            localStorage.removeItem("lumepic_dashboard_cached_at_v2");
+          } else if (data && data.profiles && data.profiles.length > 0) {
             setRawDashboard(data);
             processNewSales(data);
             const cachedTime = localStorage.getItem("lumepic_dashboard_cached_at_v2");
@@ -9178,7 +10147,19 @@ export function Dashboard() {
               onUnlinkSubEventFolder={handleUnlinkSubEventFolder}
             />
           ) : isGalleryView ? (
-            <GalleryDashboard profiles={dashboard.profiles} language={language} onOpenLightbox={handleOpenLightbox} />
+            <GalleryDashboard 
+              profiles={dashboard.profiles} 
+              language={language} 
+              onOpenLightbox={handleOpenLightbox} 
+              customEvents={customEvents}
+              localDirHandle={localDirHandle}
+              localDirName={localDirName}
+              resolvedLocalUrls={resolvedLocalUrls}
+              setResolvedLocalUrls={setResolvedLocalUrls}
+              visiblePhotoKeys={visiblePhotoKeys}
+              setVisiblePhotoKeys={setVisiblePhotoKeys}
+              activeLightboxPhoto={activeLightboxPhoto}
+            />
           ) : isCullingView ? (
             <CullingDashboard language={language} />
           ) : isClientsView ? (
@@ -9224,6 +10205,7 @@ export function Dashboard() {
               availableYears={availableYears}
               allProfiles={dashboard.profiles}
               language={language}
+              customEvents={customEvents}
             />
           ) : activeProfile ? (
             <ProfileDashboard
@@ -9359,7 +10341,7 @@ export function Dashboard() {
                   </a>
                 )}
                 {/* Local status badge on image corner */}
-                {activeDirName && localSearchStatus !== "searching" && localSearchStatus !== "idle" && (
+                {activeDirName && localSearchStatus !== "idle" && (
                   <div style={{
                     position: "absolute",
                     top: "16px",
@@ -9378,23 +10360,50 @@ export function Dashboard() {
                     border: "1px solid rgba(255, 255, 255, 0.15)",
                     zIndex: 5
                   }}>
-
-                    {localSearchStatus === "found" && (
+                    {localSearchStatus === "searching" && (
+                      <>
+                        <span style={{
+                          width: "8px",
+                          height: "8px",
+                          border: "1px solid white",
+                          borderTopColor: "transparent",
+                          borderRadius: "50%",
+                          animation: "spin 0.8s linear infinite",
+                          display: "inline-block"
+                        }} />
+                        <span>{language === "es" ? "BUSCANDO ALTA..." : "SEARCHING HD..."}</span>
+                      </>
+                    )}
+                    {localSearchStatus === "found" && !lightboxImageLoaded && (
+                      <>
+                        <span style={{
+                          width: "8px",
+                          height: "8px",
+                          border: "1px solid white",
+                          borderTopColor: "transparent",
+                          borderRadius: "50%",
+                          animation: "spin 0.8s linear infinite",
+                          display: "inline-block"
+                        }} />
+                        <span>{language === "es" ? "CARGANDO ALTA..." : "LOADING HD..."}</span>
+                      </>
+                    )}
+                    {localSearchStatus === "found" && lightboxImageLoaded && (
                       <>
                         <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }} />
-                        <span>LOCAL HIGH-RES</span>
+                        <span>{language === "es" ? "ALTA RESOLUCIÓN LOCAL" : "LOCAL HIGH-RES"}</span>
                       </>
                     )}
                     {localSearchStatus === "not_found" && (
                       <>
                         <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b" }} />
-                        <span>WEB PREVIEW</span>
+                        <span>{language === "es" ? "VISTA PREVIA WEB" : "WEB PREVIEW"}</span>
                       </>
                     )}
                     {localSearchStatus === "permission_denied" && (
                       <>
                         <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#ef4444" }} />
-                        <span>ACCESO BLOQUEADO</span>
+                        <span>{language === "es" ? "ACCESO BLOQUEADO" : "ACCESS DENIED"}</span>
                       </>
                     )}
                   </div>
@@ -9404,6 +10413,11 @@ export function Dashboard() {
                   <img 
                     src={imageSrc} 
                     alt={activeLightboxPhoto.originalFileName} 
+                    onLoad={() => {
+                      if (localPhotoUrl && imageSrc === localPhotoUrl) {
+                        setLightboxImageLoaded(true);
+                      }
+                    }}
                   />
                 ) : null}
                 {lightboxPhotoList.length > 1 && (() => {

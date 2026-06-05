@@ -308,6 +308,10 @@ function normalizeDetailedSale(
     .flatMap((payment) => arrayFrom(payment.fees))
     .filter((fee) => relevantLineItemIds.has(stringFrom(fee, ["lineItemId"], "")))
     .reduce((sum, fee) => sum + numberFrom(fee, ["amount"], 0), 0);
+  const stripeFee = payments
+    .flatMap((payment) => arrayFrom(payment.fees))
+    .filter((fee) => relevantLineItemIds.has(stringFrom(fee, ["lineItemId"], "")) && stringFrom(fee, ["type"], "") === "stripe_fee")
+    .reduce((sum, fee) => sum + numberFrom(fee, ["amount"], 0), 0);
   const firstLineItem = relevantLineItems[0] || asRecord(record);
   const firstAlbum = asRecord(firstLineItem.album || record.album);
   const firstEvent = asRecord(nestedValue(firstAlbum, "event"));
@@ -337,6 +341,7 @@ function normalizeDetailedSale(
     total: Math.max(grossTotal - fees, 0),
     grossTotal,
     fees,
+    stripeFee,
     isComped,
     detailsLoaded: true,
     photographs
@@ -394,13 +399,20 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
   return { details, failed };
 }
 
-function applyEstimatedFees(sales: Sale[], feeRate: number) {
+function applyEstimatedFees(sales: Sale[], feeRate: number, stripeFeeRate: number) {
   return sales.map((sale) => {
-    if (sale.isComped || sale.fees > 0) return sale;
+    if (sale.isComped || sale.fees > 0) {
+      if (sale.stripeFee === undefined) {
+        sale.stripeFee = sale.isComped ? 0 : Number((sale.fees * 0.25).toFixed(2));
+      }
+      return sale;
+    }
     const fees = sale.grossTotal * feeRate;
+    const stripeFee = sale.grossTotal * stripeFeeRate;
     return {
       ...sale,
       fees,
+      stripeFee,
       total: Math.max(sale.grossTotal - fees, 0)
     };
   });
@@ -592,7 +604,20 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
           { fees: 0, gross: 0 }
         );
     const feeRate = observedFeeRate.gross ? observedFeeRate.fees / observedFeeRate.gross : 0.2;
-    const detailedSales = applyEstimatedFees(detailResult.details, feeRate);
+
+    const observedStripeFeeRate =
+      detailResult.details
+        .filter((sale) => sale.grossTotal > 0 && sale.stripeFee && sale.stripeFee > 0)
+        .reduce(
+          (acc, sale) => ({
+            stripeFees: acc.stripeFees + (sale.stripeFee || 0),
+            gross: acc.gross + sale.grossTotal
+          }),
+          { stripeFees: 0, gross: 0 }
+        );
+    const stripeFeeRate = observedStripeFeeRate.gross ? observedStripeFeeRate.stripeFees / observedStripeFeeRate.gross : 0.04;
+
+    const detailedSales = applyEstimatedFees(detailResult.details, feeRate, stripeFeeRate);
     const paidSales = detailedSales.filter((sale) => !sale.isComped && sale.grossTotal > 0);
     const activities = normalizeActivities(activityRaw, paidSales);
     const published = asRecord(publishedRaw);
@@ -620,6 +645,10 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
       albums.reduce((sum, album) => sum + album.photos, 0);
     const conversion = numberFrom(metrics, ["rating"], 0) * 100 || (publishedPhotos ? (photos / publishedPhotos) * 100 : 0);
 
+    const totalStripeFee = paidSales.reduce((sum, sale) => sum + (sale.stripeFee || 0), 0);
+    const adjustedGrossRevenue = Math.max(grossRevenue - totalStripeFee, 0);
+    const adjustedFees = Math.max(fees - totalStripeFee, 0);
+
     return {
       id: config.id,
       label: config.label,
@@ -630,16 +659,17 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
       profile,
       totals: {
         revenue,
-        grossRevenue,
+        grossRevenue: adjustedGrossRevenue,
         subtotal,
         discounts,
-        fees,
+        fees: adjustedFees,
+        stripeFee: totalStripeFee,
         sales: numberFrom(metrics, ["salesCount"], paidSales.length),
         orders: numberFrom(asRecord(salesRaw), ["count"], detailedSales.length),
         albums: numberFrom(metrics, ["albumsCount"], nestedNumber(published, ["published", "count", "total"], albums.length)),
         publishedPhotos,
         photos,
-        avgOrder: numberFrom(metrics, ["averageTicket"], paidSales.length ? grossRevenue / paidSales.length : 0),
+        avgOrder: paidSales.length ? adjustedGrossRevenue / paidSales.length : 0,
         conversion
       },
       trend: buildTrend(paidSales),
@@ -670,6 +700,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         subtotal: 0,
         discounts: 0,
         fees: 0,
+        stripeFee: 0,
         sales: 0,
         orders: 0,
         albums: 0,
@@ -745,6 +776,7 @@ function buildConsolidatedSummary(profiles: DashboardSummary[]): ConsolidatedSum
       acc.subtotal += profile.totals.subtotal;
       acc.discounts += profile.totals.discounts;
       acc.fees += profile.totals.fees;
+      acc.stripeFee = (acc.stripeFee || 0) + (profile.totals.stripeFee || 0);
       acc.sales += profile.totals.sales;
       acc.orders += profile.totals.orders;
       acc.albums += profile.totals.albums;
@@ -758,6 +790,7 @@ function buildConsolidatedSummary(profiles: DashboardSummary[]): ConsolidatedSum
       subtotal: 0,
       discounts: 0,
       fees: 0,
+      stripeFee: 0,
       sales: 0,
       orders: 0,
       albums: 0,

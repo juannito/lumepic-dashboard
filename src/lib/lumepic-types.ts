@@ -46,6 +46,7 @@ export type Sale = {
   total: number;
   grossTotal: number;
   fees: number;
+  stripeFee?: number;
   isComped: boolean;
   detailsLoaded: boolean;
   photographs: SalePhotograph[];
@@ -90,6 +91,7 @@ export type DashboardSummary = {
     subtotal: number;
     discounts: number;
     fees: number;
+    stripeFee?: number;
     sales: number;
     orders: number;
     albums: number;
