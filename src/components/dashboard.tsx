@@ -13,6 +13,7 @@ import {
   Coins,
   Clock,
   Copy,
+  CreditCard,
   Download,
   ExternalLink,
   Eye,
@@ -887,50 +888,312 @@ function Kpi({
   );
 }
 
+const DEFAULT_KPI_ORDER = [
+  "revenue",
+  "gross",
+  "subtotal",
+  "discounts",
+  "fees",
+  "stripeFee",
+  "sales",
+  "avgOrder",
+  "albums",
+  "photos",
+  "conversion"
+];
+
+const DEFAULT_KPI_VISIBILITY: Record<string, boolean> = {
+  revenue: true,
+  gross: true,
+  subtotal: true,
+  discounts: true,
+  fees: true,
+  stripeFee: true,
+  sales: true,
+  avgOrder: true,
+  albums: true,
+  photos: true,
+  conversion: true
+};
+
 function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals"]; language?: Language }) {
   const t = TRANSLATIONS[language];
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [kpiOrder, setKpiOrder] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("lumepic_kpi_order");
+        if (saved) return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return DEFAULT_KPI_ORDER;
+  });
+
+  const [kpiVisibility, setKpiVisibility] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("lumepic_kpi_visibility");
+        if (saved) return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return DEFAULT_KPI_VISIBILITY;
+  });
+
+  const getKpiLabel = (id: string, lang: Language) => {
+    const t = TRANSLATIONS[lang];
+    switch (id) {
+      case "revenue": return t.totalRevenue;
+      case "gross": return t.totalGross;
+      case "subtotal": return t.subtotal;
+      case "discounts": return t.discounts;
+      case "fees": return t.serviceFee;
+      case "stripeFee": return lang === "es" ? "Comisión de Stripe" : "Stripe Fee";
+      case "sales": return lang === "es" ? "Ventas reales" : "Real sales";
+      case "avgOrder": return t.avgOrder;
+      case "albums": return lang === "es" ? "Álbumes" : "Albums";
+      case "photos": return t.photosSold;
+      case "conversion": return t.ratio;
+      default: return id;
+    }
+  };
+
+  const toggleVisibility = (id: string) => {
+    const nextVisibility = { ...kpiVisibility, [id]: kpiVisibility[id] === false ? true : false };
+    setKpiVisibility(nextVisibility);
+    localStorage.setItem("lumepic_kpi_visibility", JSON.stringify(nextVisibility));
+  };
+
+  const moveCard = (index: number, direction: number) => {
+    const newOrder = [...kpiOrder];
+    const targetIndex = index + direction;
+    if (targetIndex >= 0 && targetIndex < newOrder.length) {
+      const temp = newOrder[index];
+      newOrder[index] = newOrder[targetIndex];
+      newOrder[targetIndex] = temp;
+      setKpiOrder(newOrder);
+      localStorage.setItem("lumepic_kpi_order", JSON.stringify(newOrder));
+    }
+  };
+
+  const resetToDefault = () => {
+    setKpiOrder(DEFAULT_KPI_ORDER);
+    setKpiVisibility(DEFAULT_KPI_VISIBILITY);
+    localStorage.setItem("lumepic_kpi_order", JSON.stringify(DEFAULT_KPI_ORDER));
+    localStorage.setItem("lumepic_kpi_visibility", JSON.stringify(DEFAULT_KPI_VISIBILITY));
+  };
 
   const formatSalesOrOrders = (val: number) => {
     if (typeof val !== "number") return String(val);
     return val % 1 === 0 ? String(val) : val.toFixed(1);
   };
 
+  const renderCard = (id: string) => {
+    switch (id) {
+      case "revenue":
+        return <Kpi key="revenue" label={t.totalRevenue} value={money.format(totals.revenue)} note={t.netFinal} icon={<BadgeDollarSign size={20} />} tooltip={t.netRevenueHelp} />;
+      case "gross":
+        return <Kpi key="gross" label={t.totalGross} value={money.format(totals.grossRevenue)} note={t.grossNote} icon={<CircleDollarSign size={20} />} tooltip={t.grossRevenueHelp} />;
+      case "subtotal":
+        return <Kpi key="subtotal" label={t.subtotal} value={money.format(totals.subtotal)} note={t.beforeDiscounts} icon={<Coins size={20} />} tooltip={language === "es" ? "Venta acumulada antes de aplicar descuentos y comisiones" : "Accumulated sales before applying discounts and commissions"} />;
+      case "discounts":
+        return <Kpi key="discounts" label={t.discounts} value={`-${money.format(totals.discounts)}`} note={t.promosAndComps} icon={<TrendingUp size={20} />} />;
+      case "fees":
+        return (
+          <Kpi 
+            key="fees"
+            label={t.serviceFee} 
+            value={`-${money.format(totals.fees)}`} 
+            note={t.commProcessing} 
+            icon={<Activity size={20} />} 
+            tooltip={totals.stripeFee ? (
+              language === "es"
+                ? `Total comisiones: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
+                : `Total service fee: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
+            ) : undefined}
+          />
+        );
+      case "stripeFee":
+        return (
+          <Kpi 
+            key="stripeFee"
+            label={language === "es" ? "Comisión de Stripe" : "Stripe Fee"} 
+            value={`-${money.format(totals.stripeFee || 0)}`} 
+            note={language === "es" ? "Tasa de procesamiento" : "Processing fee"} 
+            icon={<CreditCard size={20} />} 
+            tooltip={language === "es" ? "Total comisiones cobradas por Stripe por procesamiento de pagos" : "Total Stripe commissions charged for payment processing"} 
+          />
+        );
+      case "sales":
+        return <Kpi key="sales" label={language === "es" ? "Ventas reales" : "Real sales"} value={formatSalesOrOrders(totals.sales)} note={`${formatSalesOrOrders(totals.orders)} ${language === "es" ? "ordenes aprobadas" : "approved orders"}`} icon={<ShoppingBag size={20} />} />;
+      case "avgOrder":
+        return <Kpi key="avgOrder" label={t.avgOrder} value={money.format(totals.avgOrder)} note={language === "es" ? "Bruto por venta real" : "Gross per real sale"} icon={<TrendingUp size={20} />} />;
+      case "albums":
+        return <Kpi key="albums" label={language === "es" ? "Álbumes" : "Albums"} value={String(totals.albums)} note={language === "es" ? "Publicados" : "Published"} icon={<Album size={20} />} />;
+      case "photos":
+        return (
+          <Kpi 
+            key="photos"
+            label={t.photosSold} 
+            value={compact.format(totals.photos)} 
+            note={totals.publishedPhotos > 0 
+              ? `${compact.format(totals.publishedPhotos)} ${language === "es" ? "publicadas" : "published"}`
+              : (language === "es" ? "Sin datos de publicación" : "No publication data")
+            } 
+            icon={<Images size={20} />} 
+          />
+        );
+      case "conversion":
+        return (
+          <Kpi 
+            key="conversion"
+            label={t.ratio} 
+            value={totals.publishedPhotos > 0 ? `${totals.conversion.toFixed(2)}%` : "-"} 
+            note={language === "es" ? "Fotos vendidas/publicadas" : "Photos sold/published"} 
+            icon={<Eye size={20} />} 
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
-    <section className="kpi-grid" aria-label="Metricas principales">
-      <Kpi label={t.totalRevenue} value={money.format(totals.revenue)} note={t.netFinal} icon={<BadgeDollarSign size={20} />} tooltip={t.netRevenueHelp} />
-      <Kpi label={t.totalGross} value={money.format(totals.grossRevenue)} note={t.grossNote} icon={<CircleDollarSign size={20} />} tooltip={t.grossRevenueHelp} />
-      <Kpi label={t.subtotal} value={money.format(totals.subtotal)} note={t.beforeDiscounts} icon={<Coins size={20} />} tooltip={language === "es" ? "Venta acumulada antes de aplicar descuentos y comisiones" : "Accumulated sales before applying discounts and commissions"} />
-      <Kpi label={t.discounts} value={`-${money.format(totals.discounts)}`} note={t.promosAndComps} icon={<TrendingUp size={20} />} />
-      <Kpi 
-        label={t.serviceFee} 
-        value={`-${money.format(totals.fees)}`} 
-        note={t.commProcessing} 
-        icon={<Activity size={20} />} 
-        tooltip={totals.stripeFee ? (
-          language === "es"
-            ? `Total comisiones: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
-            : `Total service fee: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
-        ) : undefined}
-      />
-      <Kpi label={language === "es" ? "Ventas reales" : "Real sales"} value={formatSalesOrOrders(totals.sales)} note={`${formatSalesOrOrders(totals.orders)} ${language === "es" ? "ordenes aprobadas" : "approved orders"}`} icon={<ShoppingBag size={20} />} />
-      <Kpi label={t.avgOrder} value={money.format(totals.avgOrder)} note={language === "es" ? "Bruto por venta real" : "Gross per real sale"} icon={<TrendingUp size={20} />} />
-      <Kpi label={language === "es" ? "Álbumes" : "Albums"} value={String(totals.albums)} note={language === "es" ? "Publicados" : "Published"} icon={<Album size={20} />} />
-      <Kpi 
-        label={t.photosSold} 
-        value={compact.format(totals.photos)} 
-        note={totals.publishedPhotos > 0 
-          ? `${compact.format(totals.publishedPhotos)} ${language === "es" ? "publicadas" : "published"}`
-          : (language === "es" ? "Sin datos de publicación" : "No publication data")
-        } 
-        icon={<Images size={20} />} 
-      />
-      <Kpi 
-        label={t.ratio} 
-        value={totals.publishedPhotos > 0 ? `${totals.conversion.toFixed(2)}%` : "-"} 
-        note={language === "es" ? "Fotos vendidas/publicadas" : "Photos sold/published"} 
-        icon={<Eye size={20} />} 
-      />
-    </section>
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "12px", marginBottom: "8px" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="btn-secondary"
+          style={{ 
+            display: "inline-flex", 
+            alignItems: "center", 
+            gap: "6px", 
+            fontSize: "0.8rem", 
+            padding: "8px 14px",
+            borderRadius: "8px",
+            cursor: "pointer",
+            background: "var(--paper)",
+            border: "1px solid var(--line)"
+          }}
+        >
+          <Settings size={14} />
+          {language === "es" ? "Personalizar tarjetas" : "Customize cards"}
+        </button>
+      </div>
+
+      {showSettings && (
+        <div style={{
+          background: "var(--paper)",
+          border: "1px solid var(--line)",
+          borderRadius: "16px",
+          padding: "20px",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "14px"
+        }}>
+          <div>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: "700", color: "var(--ink)" }}>
+              {language === "es" ? "Configurar orden y visibilidad de tarjetas" : "Configure card order & visibility"}
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--muted)" }}>
+              {language === "es" 
+                ? "Ordena las tarjetas con las flechas y marca cuáles quieres ver en tu panel principal." 
+                : "Order cards using the arrows and check which ones you want to display on your dashboard."}
+            </p>
+          </div>
+          
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "10px" }}>
+            {kpiOrder.map((id, index) => {
+              const label = getKpiLabel(id, language);
+              const isVisible = kpiVisibility[id] !== false;
+              return (
+                <div key={id} style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "space-between", 
+                  background: "var(--paper-2)", 
+                  padding: "10px 14px", 
+                  borderRadius: "10px",
+                  border: "1px solid var(--line)"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", userSelect: "none" }}>
+                    <input 
+                      type="checkbox" 
+                      checked={isVisible}
+                      onChange={() => toggleVisibility(id)}
+                      id={`chk-${id}`}
+                      style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "var(--accent, #6366f1)" }}
+                    />
+                    <label htmlFor={`chk-${id}`} style={{ fontSize: "0.85rem", cursor: "pointer", fontWeight: "600", color: "var(--ink)" }}>
+                      {label}
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: "4px" }}>
+                    <button 
+                      onClick={() => moveCard(index, -1)}
+                      disabled={index === 0}
+                      title={language === "es" ? "Subir" : "Move Up"}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.8rem", 
+                        borderRadius: "6px", 
+                        background: "var(--paper)", 
+                        border: "1px solid var(--line)", 
+                        cursor: index === 0 ? "not-allowed" : "pointer",
+                        opacity: index === 0 ? 0.4 : 1
+                      }}
+                    >
+                      ↑
+                    </button>
+                    <button 
+                      onClick={() => moveCard(index, 1)}
+                      disabled={index === kpiOrder.length - 1}
+                      title={language === "es" ? "Bajar" : "Move Down"}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.8rem", 
+                        borderRadius: "6px", 
+                        background: "var(--paper)", 
+                        border: "1px solid var(--line)", 
+                        cursor: index === kpiOrder.length - 1 ? "not-allowed" : "pointer",
+                        opacity: index === kpiOrder.length - 1 ? 0.4 : 1
+                      }}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--line)", paddingTop: "14px", marginTop: "4px" }}>
+            <button 
+              onClick={resetToDefault}
+              className="btn-secondary"
+              style={{ fontSize: "0.8rem", padding: "6px 12px", borderRadius: "6px", background: "transparent", border: "none" }}
+            >
+              {language === "es" ? "Restablecer" : "Reset defaults"}
+            </button>
+            <button 
+              onClick={() => setShowSettings(false)}
+              className="btn-primary"
+              style={{ fontSize: "0.8rem", padding: "8px 16px", borderRadius: "8px", cursor: "pointer" }}
+            >
+              {language === "es" ? "Aplicar cambios" : "Apply changes"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <section className="kpi-grid" aria-label="Metricas principales">
+        {kpiOrder.map(id => {
+          const isVisible = kpiVisibility[id] !== false;
+          return isVisible ? renderCard(id) : null;
+        })}
+      </section>
+    </div>
   );
 }
 
