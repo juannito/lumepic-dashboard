@@ -8379,6 +8379,7 @@ function EventsDashboard({
                   <tr>
                     <th>{language === "es" ? "Sub-evento" : "Sub-event"}</th>
                     <th>{language === "es" ? "Fecha" : "Date"}</th>
+                    <th>{language === "es" ? "Ingresos Brutos" : "Gross Revenue"}</th>
                     <th>{language === "es" ? "Ingresos Netos" : "Net Revenue"}</th>
                     <th>{language === "es" ? "Porcentaje" : "Percentage"}</th>
                     <th>{language === "es" ? "Ventas Imputadas" : "Mapped Sales"}</th>
@@ -8393,6 +8394,7 @@ function EventsDashboard({
                       <tr key={sub.date}>
                         <td data-label="Sub-evento"><strong>{sub.name}</strong></td>
                         <td data-label="Fecha">{formatDateOnly(sub.date, language)}</td>
+                        <td data-label={language === "es" ? "Ingresos Brutos" : "Gross Revenue"}>{money.format(sub.totals.grossRevenue)}</td>
                         <td data-label="Ingresos Netos">{money.format(sub.revenue)}</td>
                         <td data-label="Porcentaje">{pct.toFixed(1)}%</td>
                         <td data-label="Ventas Imputadas">{sub.salesCount.toFixed(1)}</td>
@@ -8459,6 +8461,7 @@ function EventsDashboard({
                     <tr style={{ background: "rgba(0, 0, 0, 0.02)" }}>
                       <td data-label="Sub-evento"><em>{eventDetails.unclassified.name}</em></td>
                       <td data-label="Fecha">-</td>
+                      <td data-label={language === "es" ? "Ingresos Brutos" : "Gross Revenue"}>{money.format(eventDetails.unclassified.totals.grossRevenue)}</td>
                       <td data-label="Ingresos Netos">{money.format(eventDetails.unclassified.revenue)}</td>
                       <td data-label="Porcentaje">{(eventDetails.totals.revenue > 0 ? (eventDetails.unclassified.revenue / eventDetails.totals.revenue) * 100 : 0).toFixed(1)}%</td>
                       <td data-label="Ventas Imputadas">{eventDetails.unclassified.salesCount.toFixed(1)}</td>
@@ -8468,7 +8471,7 @@ function EventsDashboard({
                   )}
                   {eventDetails.subEvents.length === 0 && eventDetails.unclassified.revenue === 0 && (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: "center", color: "var(--muted)", padding: "20px" }}>
+                      <td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: "20px" }}>
                         {language === "es" ? "Ninguna venta registrada para los álbumes seleccionados." : "No sales recorded for the selected albums."}
                       </td>
                     </tr>
