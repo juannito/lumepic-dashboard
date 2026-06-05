@@ -646,7 +646,6 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const conversion = numberFrom(metrics, ["rating"], 0) * 100 || (publishedPhotos ? (photos / publishedPhotos) * 100 : 0);
 
     const totalStripeFee = paidSales.reduce((sum, sale) => sum + (sale.stripeFee || 0), 0);
-    const adjustedGrossRevenue = Math.max(grossRevenue - totalStripeFee, 0);
     const adjustedFees = Math.max(fees - totalStripeFee, 0);
 
     return {
@@ -659,7 +658,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
       profile,
       totals: {
         revenue,
-        grossRevenue: adjustedGrossRevenue,
+        grossRevenue,
         subtotal,
         discounts,
         fees: adjustedFees,
@@ -669,7 +668,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         albums: numberFrom(metrics, ["albumsCount"], nestedNumber(published, ["published", "count", "total"], albums.length)),
         publishedPhotos,
         photos,
-        avgOrder: paidSales.length ? adjustedGrossRevenue / paidSales.length : 0,
+        avgOrder: paidSales.length ? grossRevenue / paidSales.length : 0,
         conversion
       },
       trend: buildTrend(paidSales),

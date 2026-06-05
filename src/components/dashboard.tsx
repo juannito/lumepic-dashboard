@@ -386,12 +386,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     discounts: "Discounts",
     serviceFee: "Service Fee",
     netFinal: "Net earnings (after commissions)",
-    grossNote: "Gross earnings before Lumepic commission (net of Stripe fee)",
+    grossNote: "Gross earnings (before commissions)",
     beforeDiscounts: "Before discounts",
     promosAndComps: "Promos & comps",
     commProcessing: "Lumepic platform commission",
     netRevenueHelp: "Net earnings after commissions and processing fees have been deducted",
-    grossRevenueHelp: "Gross earnings minus Stripe processing fees (before Lumepic commissions)",
+    grossRevenueHelp: "Gross earnings before commissions and processing fees are deducted",
     
     // Cruce por perfil
     profileCross: "Profile Cross-Reference",
@@ -573,12 +573,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     discounts: "Descuentos",
     serviceFee: "Service Fee",
     netFinal: "Ganancias netas (comisiones deducidas)",
-    grossNote: "Venta bruta antes de comisión de Lumepic (neto de Stripe)",
+    grossNote: "Venta bruta (antes de comisiones)",
     beforeDiscounts: "Antes de descuentos",
     promosAndComps: "Promos y bonificaciones",
     commProcessing: "Comisión de plataforma de Lumepic",
     netRevenueHelp: "Ganancias netas tras deducir comisiones y tasas de procesamiento",
-    grossRevenueHelp: "Ingresos brutos menos comisiones de Stripe (antes de la comisión de Lumepic)",
+    grossRevenueHelp: "Ingresos brutos antes de deducir comisiones y tasas de procesamiento",
     
     // Cruce por perfil
     profileCross: "Cruce por perfil",
@@ -7722,7 +7722,7 @@ function EventsDashboard({
           sub.photosSold += sale.photos * ratio;
 
           sub.totals.revenue += sale.total * ratio;
-          sub.totals.grossRevenue += (sale.grossTotal - (sale.stripeFee || 0)) * ratio;
+          sub.totals.grossRevenue += sale.grossTotal * ratio;
           sub.totals.subtotal += (sale.grossTotal + sale.discount) * ratio;
           sub.totals.discounts += sale.discount * ratio;
           sub.totals.fees += (sale.fees - (sale.stripeFee || 0)) * ratio;
@@ -7739,7 +7739,7 @@ function EventsDashboard({
           unclassified.photosSold += sale.photos * ratio;
 
           unclassified.totals.revenue += sale.total * ratio;
-          unclassified.totals.grossRevenue += (sale.grossTotal - (sale.stripeFee || 0)) * ratio;
+          unclassified.totals.grossRevenue += sale.grossTotal * ratio;
           unclassified.totals.subtotal += (sale.grossTotal + sale.discount) * ratio;
           unclassified.totals.discounts += sale.discount * ratio;
           unclassified.totals.fees += (sale.fees - (sale.stripeFee || 0)) * ratio;
@@ -7765,7 +7765,7 @@ function EventsDashboard({
           sub.photosSold += sale.photos;
 
           sub.totals.revenue += sale.total;
-          sub.totals.grossRevenue += sale.grossTotal - (sale.stripeFee || 0);
+          sub.totals.grossRevenue += sale.grossTotal;
           sub.totals.subtotal += sale.grossTotal + sale.discount;
           sub.totals.discounts += sale.discount;
           sub.totals.fees += sale.fees - (sale.stripeFee || 0);
@@ -7782,7 +7782,7 @@ function EventsDashboard({
           unclassified.photosSold += sale.photos;
 
           unclassified.totals.revenue += sale.total;
-          unclassified.totals.grossRevenue += sale.grossTotal - (sale.stripeFee || 0);
+          unclassified.totals.grossRevenue += sale.grossTotal;
           unclassified.totals.subtotal += sale.grossTotal + sale.discount;
           unclassified.totals.discounts += sale.discount;
           unclassified.totals.fees += sale.fees - (sale.stripeFee || 0);
@@ -7825,7 +7825,7 @@ function EventsDashboard({
 
     const eventTotals = {
       revenue: totalRevenue,
-      grossRevenue: Math.max(totalGrossRevenue - totalStripeFee, 0),
+      grossRevenue: totalGrossRevenue,
       subtotal: totalGrossRevenue + totalDiscounts,
       discounts: totalDiscounts,
       fees: Math.max(totalFees - totalStripeFee, 0),

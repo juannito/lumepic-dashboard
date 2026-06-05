@@ -24,7 +24,7 @@ export const demoSummary: DashboardSummary = {
   },
   totals: {
     revenue: 8640,
-    grossRevenue: 10260,
+    grossRevenue: 10800,
     subtotal: 12600,
     discounts: 1800,
     fees: 1620,
@@ -34,7 +34,7 @@ export const demoSummary: DashboardSummary = {
     albums: 19,
     photos: 426,
     publishedPhotos: 5200,
-    avgOrder: 80.16,
+    avgOrder: 84.38,
     conversion: 8.7
   },
   trend: [
