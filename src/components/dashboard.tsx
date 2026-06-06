@@ -3838,6 +3838,7 @@ interface GalleryPhotoCardProps {
   resolvedLocalUrls: Record<string, string>;
   setResolvedLocalUrls: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setVisiblePhotoKeys: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  permissionRetry: number;
 }
 
 function GalleryPhotoCard({
@@ -3852,7 +3853,8 @@ function GalleryPhotoCard({
   profilesLength,
   resolvedLocalUrls,
   setResolvedLocalUrls,
-  setVisiblePhotoKeys
+  setVisiblePhotoKeys,
+  permissionRetry
 }: GalleryPhotoCardProps) {
   const [localUrl, setLocalUrl] = useState<string | null>(null);
   const [localSearchStatus, setLocalSearchStatus] = useState<"idle" | "searching" | "found" | "not_found" | "permission_denied">("idle");
@@ -4000,7 +4002,7 @@ function GalleryPhotoCard({
     return () => {
       active = false;
     };
-  }, [isVisible, customEvents, globalDirHandle, item, albumMap, cachedUrl, cacheKey, setResolvedLocalUrls]);
+  }, [isVisible, customEvents, globalDirHandle, item, albumMap, cachedUrl, cacheKey, setResolvedLocalUrls, permissionRetry]);
 
   const isComped = item.sale.isComped;
   const saleDate = new Date(item.sale.date);
@@ -4189,7 +4191,8 @@ function GalleryDashboard({
   setResolvedLocalUrls,
   visiblePhotoKeys,
   setVisiblePhotoKeys,
-  activeLightboxPhoto
+  activeLightboxPhoto,
+  permissionRetry = 0
 }: {
   profiles: DashboardSummary[];
   language?: Language;
@@ -4202,6 +4205,7 @@ function GalleryDashboard({
   visiblePhotoKeys: Record<string, boolean>;
   setVisiblePhotoKeys: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   activeLightboxPhoto: GalleryPhotoItem | null;
+  permissionRetry?: number;
 }) {
   const t = TRANSLATIONS[language];
   const [searchQuery, setSearchQuery] = useState("");
@@ -4477,6 +4481,7 @@ function GalleryDashboard({
                 resolvedLocalUrls={resolvedLocalUrls}
                 setResolvedLocalUrls={setResolvedLocalUrls}
                 setVisiblePhotoKeys={setVisiblePhotoKeys}
+                permissionRetry={permissionRetry}
               />
             );
           })}
@@ -10425,6 +10430,7 @@ export function Dashboard() {
               visiblePhotoKeys={visiblePhotoKeys}
               setVisiblePhotoKeys={setVisiblePhotoKeys}
               activeLightboxPhoto={activeLightboxPhoto}
+              permissionRetry={permissionRetry}
             />
           ) : isCullingView ? (
             <CullingDashboard language={language} />
@@ -10875,7 +10881,7 @@ export function Dashboard() {
                     </strong>
                   </div>
                 </div>
-                {!activeDirName && (
+                {(!activeDirName || localSearchStatus !== "found") && (
                   <div style={{ marginTop: "auto", paddingTop: "20px", display: "flex", gap: "12px" }}>
                     <a
                       href={activeLightboxPhoto.url || activeLightboxPhoto.thumbnailUrl}
