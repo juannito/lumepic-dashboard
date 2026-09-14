@@ -39,7 +39,7 @@ import {
   ChevronRight,
   Plus,
   ArrowLeft,
-  Edit3
+  Edit3,
 } from "lucide-react";
 import {
   Area,
@@ -52,10 +52,29 @@ import {
   ResponsiveContainer,
   Tooltip,
   XAxis,
-  YAxis
+  YAxis,
 } from "recharts";
-import { useEffect, useMemo, useState, useCallback, useRef, Fragment } from "react";
-import type { AlbumInsight, ConsolidatedPoint, ConsolidatedSummary, DashboardPayload, DashboardSummary, FidelityCode, Sale, SalesPoint, SalePhotograph, CustomEvent, CustomSubEvent } from "@/lib/lumepic-types";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  Fragment,
+} from "react";
+import type {
+  AlbumInsight,
+  ConsolidatedPoint,
+  ConsolidatedSummary,
+  DashboardPayload,
+  DashboardSummary,
+  FidelityCode,
+  Sale,
+  SalesPoint,
+  SalePhotograph,
+  CustomEvent,
+  CustomSubEvent,
+} from "@/lib/lumepic-types";
 import packageJson from "../../package.json";
 
 const APP_VERSION = packageJson.version;
@@ -63,7 +82,10 @@ const APP_VERSION = packageJson.version;
 type ExportColumn = {
   key: string;
   label: string;
-  getValue: (profile: DashboardSummary, sale: Sale) => string | number | boolean;
+  getValue: (
+    profile: DashboardSummary,
+    sale: Sale,
+  ) => string | number | boolean;
 };
 
 // IndexedDB helper to save/retrieve directory handle
@@ -97,7 +119,9 @@ function getLocalDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
   });
 }
 
-function setLocalDirectoryHandle(handle: FileSystemDirectoryHandle | null): Promise<boolean> {
+function setLocalDirectoryHandle(
+  handle: FileSystemDirectoryHandle | null,
+): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window === "undefined" || !("indexedDB" in window)) {
       resolve(false);
@@ -112,7 +136,9 @@ function setLocalDirectoryHandle(handle: FileSystemDirectoryHandle | null): Prom
       try {
         const transaction = db.transaction(STORE_NAME, "readwrite");
         const store = transaction.objectStore(STORE_NAME);
-        const putReq = handle ? store.put(handle, KEY_DIR) : store.delete(KEY_DIR);
+        const putReq = handle
+          ? store.put(handle, KEY_DIR)
+          : store.delete(KEY_DIR);
         putReq.onsuccess = () => resolve(true);
         putReq.onerror = () => resolve(false);
       } catch {
@@ -123,7 +149,9 @@ function setLocalDirectoryHandle(handle: FileSystemDirectoryHandle | null): Prom
   });
 }
 
-function getLocalDirectoryHandleForEvent(eventId: string): Promise<FileSystemDirectoryHandle | null> {
+function getLocalDirectoryHandleForEvent(
+  eventId: string,
+): Promise<FileSystemDirectoryHandle | null> {
   return new Promise((resolve) => {
     if (typeof window === "undefined" || !("indexedDB" in window)) {
       resolve(null);
@@ -150,7 +178,10 @@ function getLocalDirectoryHandleForEvent(eventId: string): Promise<FileSystemDir
   });
 }
 
-function setLocalDirectoryHandleForEvent(eventId: string, handle: FileSystemDirectoryHandle | null): Promise<boolean> {
+function setLocalDirectoryHandleForEvent(
+  eventId: string,
+  handle: FileSystemDirectoryHandle | null,
+): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window === "undefined" || !("indexedDB" in window)) {
       resolve(false);
@@ -177,7 +208,10 @@ function setLocalDirectoryHandleForEvent(eventId: string, handle: FileSystemDire
   });
 }
 
-function getLocalDirectoryHandleForSubEvent(eventId: string, subEventId: string): Promise<FileSystemDirectoryHandle | null> {
+function getLocalDirectoryHandleForSubEvent(
+  eventId: string,
+  subEventId: string,
+): Promise<FileSystemDirectoryHandle | null> {
   return new Promise((resolve) => {
     if (typeof window === "undefined" || !("indexedDB" in window)) {
       resolve(null);
@@ -204,7 +238,11 @@ function getLocalDirectoryHandleForSubEvent(eventId: string, subEventId: string)
   });
 }
 
-function setLocalDirectoryHandleForSubEvent(eventId: string, subEventId: string, handle: FileSystemDirectoryHandle | null): Promise<boolean> {
+function setLocalDirectoryHandleForSubEvent(
+  eventId: string,
+  subEventId: string,
+  handle: FileSystemDirectoryHandle | null,
+): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window === "undefined" || !("indexedDB" in window)) {
       resolve(false);
@@ -231,7 +269,10 @@ function setLocalDirectoryHandleForSubEvent(eventId: string, subEventId: string,
   });
 }
 
-async function verifyDirectoryPermission(handle: FileSystemDirectoryHandle, request = false): Promise<boolean> {
+async function verifyDirectoryPermission(
+  handle: FileSystemDirectoryHandle,
+  request = false,
+): Promise<boolean> {
   const opts = { mode: "read" as const };
   try {
     if ((await (handle as any).queryPermission(opts)) === "granted") {
@@ -248,10 +289,13 @@ async function verifyDirectoryPermission(handle: FileSystemDirectoryHandle, requ
   return false;
 }
 
-async function findLocalPhotoHandle(dirHandle: FileSystemDirectoryHandle, filename: string): Promise<FileSystemFileHandle | null> {
+async function findLocalPhotoHandle(
+  dirHandle: FileSystemDirectoryHandle,
+  filename: string,
+): Promise<FileSystemFileHandle | null> {
   const targetName = filename.toLowerCase().trim();
   if (!targetName) return null;
-  
+
   const queue: FileSystemDirectoryHandle[] = [dirHandle];
   while (queue.length > 0) {
     const currentDir = queue.shift()!;
@@ -276,12 +320,12 @@ const money = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "USD",
   minimumFractionDigits: 2,
-  maximumFractionDigits: 2
+  maximumFractionDigits: 2,
 });
 
 const compact = new Intl.NumberFormat("es-AR", {
   notation: "compact",
-  maximumFractionDigits: 1
+  maximumFractionDigits: 1,
 });
 
 function isAlbumMatch(saleAlbum?: string, albumTitle?: string): boolean {
@@ -290,57 +334,132 @@ function isAlbumMatch(saleAlbum?: string, albumTitle?: string): boolean {
   const a = albumTitle.toLowerCase().trim();
   if (s === a) return true;
   if (s.includes(a) || a.includes(s)) return true;
-  
-  const clean = (str: string) => str.replace(/\b20\d{2}\b/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+
+  const clean = (str: string) =>
+    str
+      .replace(/\b20\d{2}\b/g, "")
+      .replace(/[^a-z0-9]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   const cleanS = clean(s);
   const cleanA = clean(a);
-  if (cleanS && cleanA && (cleanS.includes(cleanA) || cleanA.includes(cleanS))) return true;
-  
+  if (cleanS && cleanA && (cleanS.includes(cleanA) || cleanA.includes(cleanS)))
+    return true;
+
   return false;
 }
 
 const EXPORT_COLUMNS: ExportColumn[] = [
-  { key: "profile_label", label: "Perfil", getValue: (profile) => profile.label },
-  { key: "photographer_name", label: "Fotografo", getValue: (profile) => profile.profile.name },
-  { key: "photographer_email", label: "Email fotografo", getValue: (profile) => profile.profile.email },
-  { key: "fidelity_code", label: "Fidelity code", getValue: (profile) => profile.profile.fidelityCode?.code ?? "" },
+  {
+    key: "profile_label",
+    label: "Perfil",
+    getValue: (profile) => profile.label,
+  },
+  {
+    key: "photographer_name",
+    label: "Fotografo",
+    getValue: (profile) => profile.profile.name,
+  },
+  {
+    key: "photographer_email",
+    label: "Email fotografo",
+    getValue: (profile) => profile.profile.email,
+  },
+  {
+    key: "fidelity_code",
+    label: "Fidelity code",
+    getValue: (profile) => profile.profile.fidelityCode?.code ?? "",
+  },
   {
     key: "fidelity_discount",
     label: "Fidelity discount",
-    getValue: (profile) => formatFidelityDiscount(profile.profile.fidelityCode)
+    getValue: (profile) => formatFidelityDiscount(profile.profile.fidelityCode),
   },
   {
     key: "fidelity_status",
     label: "Fidelity status",
-    getValue: (profile) => (profile.profile.fidelityCode?.isSuspended ? "suspended" : profile.profile.fidelityCode ? "active" : "")
+    getValue: (profile) =>
+      profile.profile.fidelityCode?.isSuspended
+        ? "suspended"
+        : profile.profile.fidelityCode
+          ? "active"
+          : "",
   },
   { key: "sale_id", label: "Sale ID", getValue: (_profile, sale) => sale.id },
   { key: "status", label: "Estado", getValue: (_profile, sale) => sale.status },
-  { key: "sale_date", label: "Fecha venta", getValue: (_profile, sale) => sale.date },
-  { key: "buyer_name", label: "Comprador", getValue: (_profile, sale) => sale.buyer },
-  { key: "buyer_email", label: "Email comprador", getValue: (_profile, sale) => sale.buyerEmail },
+  {
+    key: "sale_date",
+    label: "Fecha venta",
+    getValue: (_profile, sale) => sale.date,
+  },
+  {
+    key: "buyer_name",
+    label: "Comprador",
+    getValue: (_profile, sale) => sale.buyer,
+  },
+  {
+    key: "buyer_email",
+    label: "Email comprador",
+    getValue: (_profile, sale) => sale.buyerEmail,
+  },
   { key: "album", label: "Album", getValue: (_profile, sale) => sale.album },
-  { key: "activity", label: "Actividad", getValue: (_profile, sale) => sale.activity },
+  {
+    key: "activity",
+    label: "Actividad",
+    getValue: (_profile, sale) => sale.activity,
+  },
   { key: "photos", label: "Fotos", getValue: (_profile, sale) => sale.photos },
-  { key: "photo_ids", label: "Photo IDs", getValue: (_profile, sale) => sale.photographs.map((photo) => photo.id).join("|") },
+  {
+    key: "photo_ids",
+    label: "Photo IDs",
+    getValue: (_profile, sale) =>
+      sale.photographs.map((photo) => photo.id).join("|"),
+  },
   {
     key: "photo_filenames",
     label: "Photo filenames",
-    getValue: (_profile, sale) => sale.photographs.map((photo) => photo.originalFileName).join("|")
+    getValue: (_profile, sale) =>
+      sale.photographs.map((photo) => photo.originalFileName).join("|"),
   },
   {
     key: "photo_thumbnails",
     label: "Photo thumbnails",
-    getValue: (_profile, sale) => sale.photographs.map((photo) => photo.thumbnailUrl).join("|")
+    getValue: (_profile, sale) =>
+      sale.photographs.map((photo) => photo.thumbnailUrl).join("|"),
   },
-  { key: "photo_urls", label: "Photo URLs", getValue: (_profile, sale) => sale.photographs.map((photo) => photo.url).join("|") },
-  { key: "subtotal", label: "Subtotal", getValue: (_profile, sale) => sale.subtotal },
-  { key: "discount", label: "Descuento", getValue: (_profile, sale) => sale.discount },
-  { key: "gross_sale", label: "Venta", getValue: (_profile, sale) => sale.grossTotal },
+  {
+    key: "photo_urls",
+    label: "Photo URLs",
+    getValue: (_profile, sale) =>
+      sale.photographs.map((photo) => photo.url).join("|"),
+  },
+  {
+    key: "subtotal",
+    label: "Subtotal",
+    getValue: (_profile, sale) => sale.subtotal,
+  },
+  {
+    key: "discount",
+    label: "Descuento",
+    getValue: (_profile, sale) => sale.discount,
+  },
+  {
+    key: "gross_sale",
+    label: "Venta",
+    getValue: (_profile, sale) => sale.grossTotal,
+  },
   { key: "service", label: "Service", getValue: (_profile, sale) => sale.fees },
   { key: "net_total", label: "Neto", getValue: (_profile, sale) => sale.total },
-  { key: "is_comped", label: "Bonificada", getValue: (_profile, sale) => sale.isComped },
-  { key: "details_loaded", label: "Detalle cargado", getValue: (_profile, sale) => sale.detailsLoaded }
+  {
+    key: "is_comped",
+    label: "Bonificada",
+    getValue: (_profile, sale) => sale.isComped,
+  },
+  {
+    key: "details_loaded",
+    label: "Detalle cargado",
+    getValue: (_profile, sale) => sale.detailsLoaded,
+  },
 ];
 
 type Language = "en" | "es";
@@ -372,7 +491,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     baseOfClients: "Client database",
     realData: "Real data",
     demoMode: "Demo mode",
-    
+
     // KPI
     totalRevenue: "Total Revenue",
     totalGross: "Total Gross",
@@ -390,19 +509,21 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     beforeDiscounts: "Before discounts",
     promosAndComps: "Promos & comps",
     commProcessing: "Lumepic platform commission",
-    netRevenueHelp: "Net earnings after commissions and processing fees have been deducted",
-    grossRevenueHelp: "Gross earnings before commissions and processing fees are deducted",
-    
+    netRevenueHelp:
+      "Net earnings after commissions and processing fees have been deducted",
+    grossRevenueHelp:
+      "Gross earnings before commissions and processing fees are deducted",
+
     // Cruce por perfil
     profileCross: "Profile Cross-Reference",
     profileCrossDesc: "Volume, revenue and average ticket.",
-    
+
     // Ventas Consolidadas
     consolidatedSales: "Consolidated Sales",
     consolidatedSalesDesc: "Comparison of net revenue/sold photos by period.",
     netRevenue: "Net Revenue",
     soldPhotosLabel: "Sold Photos",
-    
+
     // Ventas por Evento (Album)
     salesByEvent: "Sales by Event (Album)",
     salesByEventDesc: "Consolidated performance breakdown for each event.",
@@ -412,7 +533,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     ratio: "Ratio (Conv.)",
     views: "Views",
     noEvents: "No events available.",
-    
+
     // Profile Dashboard specific
     salesByActivity: "Sales by Activity",
     whereDemand: "Where demand is concentrated.",
@@ -421,7 +542,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     recentSales: "Recent Sales",
     clickSaleDesc: "Click on a sale to review details.",
     allEvents: "All Events",
-    
+
     // Sale Details
     saleDetails: "Sale Details",
     saleDetailsDesc: "Itemized transactions, custom labels, and fees.",
@@ -431,7 +552,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     net: "Net",
     status: "Status",
     completed: "Completed",
-    
+
     // Table Headers
     tableSale: "Sale",
     tableAlbum: "Album",
@@ -442,7 +563,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     tableService: "Service",
     tableNet: "Net",
     tableStatus: "Status",
-    
+
     // Settings
     configTitle: "Settings",
     configDesc: "Adjust preferences, languages, and custom names.",
@@ -451,28 +572,47 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     pullFreq: "Update Frequency",
     pullFreqDesc: "Define how often new data will be requested.",
     desktopAlerts: "Desktop Notifications",
-    desktopAlertsDesc: "Receive native desktop alerts when new sales are recorded.",
+    desktopAlertsDesc:
+      "Receive native desktop alerts when new sales are recorded.",
     photoNames: "Photographer Names",
-    photoNamesDesc: "Define custom names for your profiles instead of the defaults.",
+    photoNamesDesc:
+      "Define custom names for your profiles instead of the defaults.",
     customNamePlaceholder: "Custom name...",
     saveClose: "Save & Close",
     language: "Language",
     languageDesc: "Select the interface language.",
     spanish: "Spanish",
     english: "English",
-    
+
     // Settings intervals
     sec30: "30 seconds",
     min1: "1 minute",
     min5: "5 minutes",
     min10: "10 minutes",
-    
+
     // watcher view
     watcherTitle: "Local Folder Watcher",
-    watcherDesc: "Monitor a local folder for automatic image uploads to Lumepic.",
-    
+    watcherDesc:
+      "Monitor a local folder for automatic image uploads to Lumepic.",
+
     // gallery view
     galleryTitle: "Sold Gallery Archive",
+
+    // event photos view
+    eventPhotosTitle: "Event Photo Browser",
+    eventPhotosDesc:
+      "Browse and search photos from your published albums by bib number.",
+    bibSearch: "Search by bib number",
+    bibSearchPlaceholder: "Enter bib number (e.g. 1305)...",
+    selectAlbumToBrowse: "Select an album to browse",
+    loadingPhotos: "Loading photos...",
+    searchingBib: "Searching bib number...",
+    bibNotFound: "No photos found for this bib number.",
+    noAlbumSelected: "Select an album from the list to start browsing.",
+    loadMore: "Load more",
+    eventPhotosCount: "photos",
+    bibResultsLabel: "Results for bib",
+    clearBibSearch: "Browse all photos",
 
     // Export Modal
     exportModalTitle: "Export Data",
@@ -489,7 +629,8 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     accumulatedTotal: "Accumulated total",
     avgSpentPerClient: "Avg Spent per Client",
     clientDirectory: "Client Directory",
-    clientDirectoryDesc: "Click on a client to view their history and social networks.",
+    clientDirectoryDesc:
+      "Click on a client to view their history and social networks.",
     clientLabel: "Client",
     customName: "Custom Name",
     instagramLabel: "Instagram",
@@ -531,7 +672,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     success: "success",
     attempts: "attempts",
     retry: "Retry",
-    delete: "Delete"
+    delete: "Delete",
   },
   es: {
     // Switcher & Sidebar
@@ -559,7 +700,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     baseOfClients: "Base de clientes",
     realData: "Datos reales",
     demoMode: "Modo demo",
-    
+
     // KPI
     totalRevenue: "Ingresos Totales",
     totalGross: "Ingresos Brutos (Gross)",
@@ -577,19 +718,22 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     beforeDiscounts: "Antes de descuentos",
     promosAndComps: "Promos y bonificaciones",
     commProcessing: "Comisión de plataforma de Lumepic",
-    netRevenueHelp: "Ganancias netas tras deducir comisiones y tasas de procesamiento",
-    grossRevenueHelp: "Ingresos brutos antes de deducir comisiones y tasas de procesamiento",
-    
+    netRevenueHelp:
+      "Ganancias netas tras deducir comisiones y tasas de procesamiento",
+    grossRevenueHelp:
+      "Ingresos brutos antes de deducir comisiones y tasas de procesamiento",
+
     // Cruce por perfil
     profileCross: "Cruce por perfil",
     profileCrossDesc: "Volumen, ingreso y ticket medio.",
-    
+
     // Ventas Consolidadas
     consolidatedSales: "Ventas Consolidadas",
-    consolidatedSalesDesc: "Comparación de ingresos netos/fotos vendidas por periodo.",
+    consolidatedSalesDesc:
+      "Comparación de ingresos netos/fotos vendidas por periodo.",
     netRevenue: "Ingresos Netos",
     soldPhotosLabel: "Fotos Vendidas",
-    
+
     // Ventas por Evento (Album)
     salesByEvent: "Ventas por Evento (Album)",
     salesByEventDesc: "Desglose de rendimiento consolidado por cada evento.",
@@ -599,7 +743,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     ratio: "Ratio (Conv.)",
     views: "Vistas",
     noEvents: "No hay eventos disponibles.",
-    
+
     // Profile Dashboard specific
     salesByActivity: "Ventas por actividad",
     whereDemand: "Donde se concentra la demanda.",
@@ -608,17 +752,18 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     recentSales: "Ventas recientes",
     clickSaleDesc: "Click en una venta para revisar el detalle.",
     allEvents: "Todos los eventos",
-    
+
     // Sale Details
     saleDetails: "Detalle de Venta",
-    saleDetailsDesc: "Transacciones detalladas, etiquetas personalizadas y comisiones.",
+    saleDetailsDesc:
+      "Transacciones detalladas, etiquetas personalizadas y comisiones.",
     client: "Cliente",
     downloadPhotos: "Descargar Fotos",
     discount: "Descuento",
     net: "Neto",
     status: "Estado",
     completed: "Completado",
-    
+
     // Table Headers
     tableSale: "Venta",
     tableAlbum: "Album",
@@ -629,37 +774,57 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     tableService: "Comisión",
     tableNet: "Neto",
     tableStatus: "Estado",
-    
+
     // Settings
     configTitle: "Configuración",
     configDesc: "Ajusta las preferencias de sincronización, idioma y nombres.",
     autoPull: "Sincronización Automática (Pull)",
-    autoPullDesc: "Actualiza las ventas del servidor en segundo plano periódicamente.",
+    autoPullDesc:
+      "Actualiza las ventas del servidor en segundo plano periódicamente.",
     pullFreq: "Frecuencia de actualización",
     pullFreqDesc: "Define cada cuánto tiempo se solicitarán nuevos datos.",
     desktopAlerts: "Notificaciones de Escritorio",
-    desktopAlertsDesc: "Recibe alertas nativas en tu escritorio al ingresar nuevas ventas.",
+    desktopAlertsDesc:
+      "Recibe alertas nativas en tu escritorio al ingresar nuevas ventas.",
     photoNames: "Nombres de Fotógrafos",
-    photoNamesDesc: "Define nombres personalizados para tus perfiles en lugar de los predeterminados.",
+    photoNamesDesc:
+      "Define nombres personalizados para tus perfiles en lugar de los predeterminados.",
     customNamePlaceholder: "Nombre personalizado...",
     saveClose: "Guardar y Cerrar",
     language: "Idioma",
     languageDesc: "Selecciona el idioma de la interfaz.",
     spanish: "Español",
     english: "Inglés",
-    
+
     // Settings intervals
     sec30: "30 segundos",
     min1: "1 minuto",
     min5: "5 minutos",
     min10: "10 minutos",
-    
+
     // watcher view
     watcherTitle: "Watcher de Carpeta Local",
-    watcherDesc: "Monitorea una carpeta local para subir imágenes automáticamente a Lumepic.",
-    
+    watcherDesc:
+      "Monitorea una carpeta local para subir imágenes automáticamente a Lumepic.",
+
     // gallery view
     galleryTitle: "Archivo de Galería Vendida",
+
+    // event photos view
+    eventPhotosTitle: "Explorador de Fotos de Eventos",
+    eventPhotosDesc:
+      "Navega y busca fotos de tus álbumes publicados por número de dorsal.",
+    bibSearch: "Buscar por número de dorsal",
+    bibSearchPlaceholder: "Ingresa el número de dorsal (ej. 1305)...",
+    selectAlbumToBrowse: "Selecciona un álbum para explorar",
+    loadingPhotos: "Cargando fotos...",
+    searchingBib: "Buscando dorsal...",
+    bibNotFound: "No se encontraron fotos para este número de dorsal.",
+    noAlbumSelected: "Selecciona un álbum de la lista para comenzar.",
+    loadMore: "Cargar más",
+    eventPhotosCount: "fotos",
+    bibResultsLabel: "Resultados para dorsal",
+    clearBibSearch: "Ver todas las fotos",
 
     // Export Modal
     exportModalTitle: "Exportar Datos",
@@ -676,7 +841,8 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     accumulatedTotal: "Total acumulado",
     avgSpentPerClient: "Ticket Medio por Cliente",
     clientDirectory: "Directorio de Clientes",
-    clientDirectoryDesc: "Haz clic en un cliente para ver su historial y redes sociales.",
+    clientDirectoryDesc:
+      "Haz clic en un cliente para ver su historial y redes sociales.",
     clientLabel: "Cliente",
     customName: "Nombre Personalizado",
     instagramLabel: "Instagram",
@@ -718,65 +884,65 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     success: "éxito",
     attempts: "intentos",
     retry: "Reintentar",
-    delete: "Eliminar"
-  }
+    delete: "Eliminar",
+  },
 };
 
 const COLUMN_TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
-    "Perfil": "Profile",
-    "Fotografo": "Photographer",
+    Perfil: "Profile",
+    Fotografo: "Photographer",
     "Email fotografo": "Photographer email",
     "Fidelity code": "Fidelity code",
     "Fidelity discount": "Fidelity discount",
     "Fidelity status": "Fidelity status",
     "Sale ID": "Sale ID",
-    "Estado": "Status",
+    Estado: "Status",
     "Fecha venta": "Sale Date",
-    "Comprador": "Buyer",
+    Comprador: "Buyer",
     "Email comprador": "Buyer Email",
-    "Album": "Album",
-    "Actividad": "Activity",
-    "Fotos": "Photos",
+    Album: "Album",
+    Actividad: "Activity",
+    Fotos: "Photos",
     "Photo IDs": "Photo IDs",
     "Photo filenames": "Photo filenames",
     "Photo thumbnails": "Photo thumbnails",
     "Photo URLs": "Photo URLs",
-    "Subtotal": "Subtotal",
-    "Descuento": "Discount",
-    "Venta": "Sale",
-    "Service": "Service Fee",
-    "Neto": "Net",
-    "Bonificada": "Bonified",
-    "Detalle cargado": "Details Loaded"
+    Subtotal: "Subtotal",
+    Descuento: "Discount",
+    Venta: "Sale",
+    Service: "Service Fee",
+    Neto: "Net",
+    Bonificada: "Bonified",
+    "Detalle cargado": "Details Loaded",
   },
   es: {
-    "Perfil": "Perfil",
-    "Fotografo": "Fotógrafo",
+    Perfil: "Perfil",
+    Fotografo: "Fotógrafo",
     "Email fotografo": "Email fotógrafo",
     "Fidelity code": "Fidelity code",
     "Fidelity discount": "Fidelity discount",
     "Fidelity status": "Fidelity status",
     "Sale ID": "ID Venta",
-    "Estado": "Estado",
+    Estado: "Estado",
     "Fecha venta": "Fecha venta",
-    "Comprador": "Comprador",
+    Comprador: "Comprador",
     "Email comprador": "Email comprador",
-    "Album": "Álbum",
-    "Actividad": "Actividad",
-    "Fotos": "Fotos",
+    Album: "Álbum",
+    Actividad: "Actividad",
+    Fotos: "Fotos",
     "Photo IDs": "IDs de fotos",
     "Photo filenames": "Nombres de fotos",
     "Photo thumbnails": "Miniaturas de fotos",
     "Photo URLs": "URLs de fotos",
-    "Subtotal": "Subtotal",
-    "Descuento": "Descuento",
-    "Venta": "Venta",
-    "Service": "Service",
-    "Neto": "Neto",
-    "Bonificada": "Bonificada",
-    "Detalle cargado": "Detalle cargado"
-  }
+    Subtotal: "Subtotal",
+    Descuento: "Descuento",
+    Venta: "Venta",
+    Service: "Service",
+    Neto: "Neto",
+    Bonificada: "Bonificada",
+    "Detalle cargado": "Detalle cargado",
+  },
 };
 
 function formatDate(date: string, lang: Language = "en") {
@@ -784,7 +950,7 @@ function formatDate(date: string, lang: Language = "en") {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   }).format(new Date(date));
 }
 
@@ -792,15 +958,20 @@ function formatDateOnly(date: string, lang: Language = "en") {
   if (!date) return "";
   try {
     const isSimpleDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
-    const parsedDate = isSimpleDate ? new Date(`${date}T12:00:00Z`) : new Date(date);
+    const parsedDate = isSimpleDate
+      ? new Date(`${date}T12:00:00Z`)
+      : new Date(date);
     const options: Intl.DateTimeFormatOptions = {
       day: "2-digit",
-      month: "short"
+      month: "short",
     };
     if (isSimpleDate || date.endsWith("Z")) {
       options.timeZone = "UTC";
     }
-    return new Intl.DateTimeFormat(lang === "es" ? "es-AR" : "en-US", options).format(parsedDate);
+    return new Intl.DateTimeFormat(
+      lang === "es" ? "es-AR" : "en-US",
+      options,
+    ).format(parsedDate);
   } catch (_) {
     return date;
   }
@@ -813,6 +984,42 @@ function toLocalYYYYMMDD(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function getGroupingKeyAndLabel(
+  date: Date,
+  grouping: "daily" | "weekly" | "monthly",
+  language: Language,
+): { key: string; label: string } {
+  if (grouping === "weekly") {
+    const startOfWeek = new Date(date);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+    startOfWeek.setDate(diff);
+
+    const key = toLocalYYYYMMDD(startOfWeek);
+    const label =
+      language === "es"
+        ? `Sem. del ${startOfWeek.toLocaleDateString("es-AR", { month: "short", day: "2-digit" })}`
+        : `Wk of ${startOfWeek.toLocaleDateString("en-US", { month: "short", day: "2-digit" })}`;
+    return { key, label };
+  }
+
+  if (grouping === "monthly") {
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const label = date.toLocaleDateString(
+      language === "es" ? "es-AR" : "en-US",
+      { month: "short", year: "numeric" },
+    );
+    return { key, label };
+  }
+
+  const key = toLocalYYYYMMDD(date);
+  const label = date.toLocaleDateString(language === "es" ? "es-AR" : "en-US", {
+    month: "short",
+    day: "2-digit",
+  });
+  return { key, label };
+}
+
 function csvEscape(value: string | number | boolean) {
   const text = String(value ?? "");
   if (/[",\n\r]/.test(text)) return `"${text.replaceAll('"', '""')}"`;
@@ -821,8 +1028,12 @@ function csvEscape(value: string | number | boolean) {
 
 function formatFidelityDiscount(fidelityCode?: FidelityCode) {
   if (!fidelityCode) return "";
-  const amount = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(fidelityCode.amount);
-  return fidelityCode.unit === "PERCENTAGE" ? `${amount}%` : `${fidelityCode.unit} ${amount}`.trim();
+  const amount = new Intl.NumberFormat("es-AR", {
+    maximumFractionDigits: 2,
+  }).format(fidelityCode.amount);
+  return fidelityCode.unit === "PERCENTAGE"
+    ? `${amount}%`
+    : `${fidelityCode.unit} ${amount}`.trim();
 }
 
 function downloadCsv(filename: string, rows: string[][]) {
@@ -850,7 +1061,7 @@ function Kpi({
   value,
   note,
   icon,
-  tooltip
+  tooltip,
 }: {
   label: string;
   value: string;
@@ -860,7 +1071,13 @@ function Kpi({
 }) {
   return (
     <article className="kpi-card">
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           {label}
           {tooltip && (
@@ -873,7 +1090,7 @@ function Kpi({
                 display: "inline-flex",
                 alignItems: "center",
                 opacity: 0.75,
-                transition: "opacity 0.2s"
+                transition: "opacity 0.2s",
               }}
             >
               <HelpCircle size={14} />
@@ -899,7 +1116,7 @@ const DEFAULT_KPI_ORDER = [
   "avgOrder",
   "albums",
   "photos",
-  "conversion"
+  "conversion",
 ];
 
 const DEFAULT_KPI_VISIBILITY: Record<string, boolean> = {
@@ -913,10 +1130,16 @@ const DEFAULT_KPI_VISIBILITY: Record<string, boolean> = {
   avgOrder: true,
   albums: true,
   photos: true,
-  conversion: true
+  conversion: true,
 };
 
-function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals"]; language?: Language }) {
+function KpiGrid({
+  totals,
+  language = "en",
+}: {
+  totals: DashboardSummary["totals"];
+  language?: Language;
+}) {
   const t = TRANSLATIONS[language];
   const [showSettings, setShowSettings] = useState(false);
 
@@ -930,38 +1153,58 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
     return DEFAULT_KPI_ORDER;
   });
 
-  const [kpiVisibility, setKpiVisibility] = useState<Record<string, boolean>>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("lumepic_kpi_visibility");
-        if (saved) return JSON.parse(saved);
-      } catch (_) {}
-    }
-    return DEFAULT_KPI_VISIBILITY;
-  });
+  const [kpiVisibility, setKpiVisibility] = useState<Record<string, boolean>>(
+    () => {
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem("lumepic_kpi_visibility");
+          if (saved) return JSON.parse(saved);
+        } catch (_) {}
+      }
+      return DEFAULT_KPI_VISIBILITY;
+    },
+  );
 
   const getKpiLabel = (id: string, lang: Language) => {
     const t = TRANSLATIONS[lang];
     switch (id) {
-      case "revenue": return t.totalRevenue;
-      case "gross": return t.totalGross;
-      case "subtotal": return t.subtotal;
-      case "discounts": return t.discounts;
-      case "fees": return t.serviceFee;
-      case "stripeFee": return lang === "es" ? "Comisión de Stripe" : "Stripe Fee";
-      case "sales": return lang === "es" ? "Ventas reales" : "Real sales";
-      case "avgOrder": return t.avgOrder;
-      case "albums": return lang === "es" ? "Álbumes" : "Albums";
-      case "photos": return t.photosSold;
-      case "conversion": return t.ratio;
-      default: return id;
+      case "revenue":
+        return t.totalRevenue;
+      case "gross":
+        return t.totalGross;
+      case "subtotal":
+        return t.subtotal;
+      case "discounts":
+        return t.discounts;
+      case "fees":
+        return t.serviceFee;
+      case "stripeFee":
+        return lang === "es" ? "Comisión de Stripe" : "Stripe Fee";
+      case "sales":
+        return lang === "es" ? "Ventas reales" : "Real sales";
+      case "avgOrder":
+        return t.avgOrder;
+      case "albums":
+        return lang === "es" ? "Álbumes" : "Albums";
+      case "photos":
+        return t.photosSold;
+      case "conversion":
+        return t.ratio;
+      default:
+        return id;
     }
   };
 
   const toggleVisibility = (id: string) => {
-    const nextVisibility = { ...kpiVisibility, [id]: kpiVisibility[id] === false ? true : false };
+    const nextVisibility = {
+      ...kpiVisibility,
+      [id]: kpiVisibility[id] === false ? true : false,
+    };
     setKpiVisibility(nextVisibility);
-    localStorage.setItem("lumepic_kpi_visibility", JSON.stringify(nextVisibility));
+    localStorage.setItem(
+      "lumepic_kpi_visibility",
+      JSON.stringify(nextVisibility),
+    );
   };
 
   const moveCard = (index: number, direction: number) => {
@@ -979,8 +1222,14 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
   const resetToDefault = () => {
     setKpiOrder(DEFAULT_KPI_ORDER);
     setKpiVisibility(DEFAULT_KPI_VISIBILITY);
-    localStorage.setItem("lumepic_kpi_order", JSON.stringify(DEFAULT_KPI_ORDER));
-    localStorage.setItem("lumepic_kpi_visibility", JSON.stringify(DEFAULT_KPI_VISIBILITY));
+    localStorage.setItem(
+      "lumepic_kpi_order",
+      JSON.stringify(DEFAULT_KPI_ORDER),
+    );
+    localStorage.setItem(
+      "lumepic_kpi_visibility",
+      JSON.stringify(DEFAULT_KPI_VISIBILITY),
+    );
   };
 
   const formatSalesOrOrders = (val: number) => {
@@ -991,66 +1240,150 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
   const renderCard = (id: string) => {
     switch (id) {
       case "revenue":
-        return <Kpi key="revenue" label={t.totalRevenue} value={money.format(totals.revenue)} note={t.netFinal} icon={<BadgeDollarSign size={20} />} tooltip={t.netRevenueHelp} />;
+        return (
+          <Kpi
+            key="revenue"
+            label={t.totalRevenue}
+            value={money.format(totals.revenue)}
+            note={t.netFinal}
+            icon={<BadgeDollarSign size={20} />}
+            tooltip={t.netRevenueHelp}
+          />
+        );
       case "gross":
-        return <Kpi key="gross" label={t.totalGross} value={money.format(totals.grossRevenue)} note={t.grossNote} icon={<CircleDollarSign size={20} />} tooltip={t.grossRevenueHelp} />;
+        return (
+          <Kpi
+            key="gross"
+            label={t.totalGross}
+            value={money.format(totals.grossRevenue)}
+            note={t.grossNote}
+            icon={<CircleDollarSign size={20} />}
+            tooltip={t.grossRevenueHelp}
+          />
+        );
       case "subtotal":
-        return <Kpi key="subtotal" label={t.subtotal} value={money.format(totals.subtotal)} note={t.beforeDiscounts} icon={<Coins size={20} />} tooltip={language === "es" ? "Venta acumulada antes de aplicar descuentos y comisiones" : "Accumulated sales before applying discounts and commissions"} />;
+        return (
+          <Kpi
+            key="subtotal"
+            label={t.subtotal}
+            value={money.format(totals.subtotal)}
+            note={t.beforeDiscounts}
+            icon={<Coins size={20} />}
+            tooltip={
+              language === "es"
+                ? "Venta acumulada antes de aplicar descuentos y comisiones"
+                : "Accumulated sales before applying discounts and commissions"
+            }
+          />
+        );
       case "discounts":
-        return <Kpi key="discounts" label={t.discounts} value={`-${money.format(totals.discounts)}`} note={t.promosAndComps} icon={<TrendingUp size={20} />} />;
+        return (
+          <Kpi
+            key="discounts"
+            label={t.discounts}
+            value={`-${money.format(totals.discounts)}`}
+            note={t.promosAndComps}
+            icon={<TrendingUp size={20} />}
+          />
+        );
       case "fees":
         return (
-          <Kpi 
+          <Kpi
             key="fees"
-            label={t.serviceFee} 
-            value={`-${money.format(totals.fees)}`} 
-            note={t.commProcessing} 
-            icon={<Activity size={20} />} 
-            tooltip={totals.stripeFee ? (
-              language === "es"
-                ? `Total comisiones: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
-                : `Total service fee: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
-            ) : undefined}
+            label={t.serviceFee}
+            value={`-${money.format(totals.fees)}`}
+            note={t.commProcessing}
+            icon={<Activity size={20} />}
+            tooltip={
+              totals.stripeFee
+                ? language === "es"
+                  ? `Total comisiones: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
+                  : `Total service fee: ${money.format(totals.fees + totals.stripeFee)} (Lumepic: ${money.format(totals.fees)}, Stripe: ${money.format(totals.stripeFee)})`
+                : undefined
+            }
           />
         );
       case "stripeFee":
         return (
-          <Kpi 
+          <Kpi
             key="stripeFee"
-            label={language === "es" ? "Comisión de Stripe" : "Stripe Fee"} 
-            value={`-${money.format(totals.stripeFee || 0)}`} 
-            note={language === "es" ? "Tasa de procesamiento" : "Processing fee"} 
-            icon={<CreditCard size={20} />} 
-            tooltip={language === "es" ? "Total comisiones cobradas por Stripe por procesamiento de pagos" : "Total Stripe commissions charged for payment processing"} 
+            label={language === "es" ? "Comisión de Stripe" : "Stripe Fee"}
+            value={`-${money.format(totals.stripeFee || 0)}`}
+            note={
+              language === "es" ? "Tasa de procesamiento" : "Processing fee"
+            }
+            icon={<CreditCard size={20} />}
+            tooltip={
+              language === "es"
+                ? "Total comisiones cobradas por Stripe por procesamiento de pagos"
+                : "Total Stripe commissions charged for payment processing"
+            }
           />
         );
       case "sales":
-        return <Kpi key="sales" label={language === "es" ? "Ventas reales" : "Real sales"} value={formatSalesOrOrders(totals.sales)} note={`${formatSalesOrOrders(totals.orders)} ${language === "es" ? "ordenes aprobadas" : "approved orders"}`} icon={<ShoppingBag size={20} />} />;
+        return (
+          <Kpi
+            key="sales"
+            label={language === "es" ? "Ventas reales" : "Real sales"}
+            value={formatSalesOrOrders(totals.sales)}
+            note={`${formatSalesOrOrders(totals.orders)} ${language === "es" ? "ordenes aprobadas" : "approved orders"}`}
+            icon={<ShoppingBag size={20} />}
+          />
+        );
       case "avgOrder":
-        return <Kpi key="avgOrder" label={t.avgOrder} value={money.format(totals.avgOrder)} note={language === "es" ? "Bruto por venta real" : "Gross per real sale"} icon={<TrendingUp size={20} />} />;
+        return (
+          <Kpi
+            key="avgOrder"
+            label={t.avgOrder}
+            value={money.format(totals.avgOrder)}
+            note={
+              language === "es" ? "Bruto por venta real" : "Gross per real sale"
+            }
+            icon={<TrendingUp size={20} />}
+          />
+        );
       case "albums":
-        return <Kpi key="albums" label={language === "es" ? "Álbumes" : "Albums"} value={String(totals.albums)} note={language === "es" ? "Publicados" : "Published"} icon={<Album size={20} />} />;
+        return (
+          <Kpi
+            key="albums"
+            label={language === "es" ? "Álbumes" : "Albums"}
+            value={String(totals.albums)}
+            note={language === "es" ? "Publicados" : "Published"}
+            icon={<Album size={20} />}
+          />
+        );
       case "photos":
         return (
-          <Kpi 
+          <Kpi
             key="photos"
-            label={t.photosSold} 
-            value={compact.format(totals.photos)} 
-            note={totals.publishedPhotos > 0 
-              ? `${compact.format(totals.publishedPhotos)} ${language === "es" ? "publicadas" : "published"}`
-              : (language === "es" ? "Sin datos de publicación" : "No publication data")
-            } 
-            icon={<Images size={20} />} 
+            label={t.photosSold}
+            value={compact.format(totals.photos)}
+            note={
+              totals.publishedPhotos > 0
+                ? `${compact.format(totals.publishedPhotos)} ${language === "es" ? "publicadas" : "published"}`
+                : language === "es"
+                  ? "Sin datos de publicación"
+                  : "No publication data"
+            }
+            icon={<Images size={20} />}
           />
         );
       case "conversion":
         return (
-          <Kpi 
+          <Kpi
             key="conversion"
-            label={t.ratio} 
-            value={totals.publishedPhotos > 0 ? `${totals.conversion.toFixed(2)}%` : "-"} 
-            note={language === "es" ? "Fotos vendidas/publicadas" : "Photos sold/published"} 
-            icon={<Eye size={20} />} 
+            label={t.ratio}
+            value={
+              totals.publishedPhotos > 0
+                ? `${totals.conversion.toFixed(2)}%`
+                : "-"
+            }
+            note={
+              language === "es"
+                ? "Fotos vendidas/publicadas"
+                : "Photos sold/published"
+            }
+            icon={<Eye size={20} />}
           />
         );
       default:
@@ -1059,21 +1392,31 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "12px", marginBottom: "8px" }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-        <button 
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        gap: "12px",
+        marginBottom: "8px",
+      }}
+    >
+      <div
+        style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}
+      >
+        <button
           onClick={() => setShowSettings(!showSettings)}
           className="btn-secondary"
-          style={{ 
-            display: "inline-flex", 
-            alignItems: "center", 
-            gap: "6px", 
-            fontSize: "0.8rem", 
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "0.8rem",
             padding: "8px 14px",
             borderRadius: "8px",
             cursor: "pointer",
             background: "var(--paper)",
-            border: "1px solid var(--line)"
+            border: "1px solid var(--line)",
           }}
         >
           <Settings size={14} />
@@ -1082,82 +1425,127 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
       </div>
 
       {showSettings && (
-        <div style={{
-          background: "var(--paper)",
-          border: "1px solid var(--line)",
-          borderRadius: "16px",
-          padding: "20px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "14px"
-        }}>
+        <div
+          style={{
+            background: "var(--paper)",
+            border: "1px solid var(--line)",
+            borderRadius: "16px",
+            padding: "20px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "14px",
+          }}
+        >
           <div>
-            <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: "700", color: "var(--ink)" }}>
-              {language === "es" ? "Configurar orden y visibilidad de tarjetas" : "Configure card order & visibility"}
+            <h3
+              style={{
+                margin: "0 0 4px 0",
+                fontSize: "0.95rem",
+                fontWeight: "700",
+                color: "var(--ink)",
+              }}
+            >
+              {language === "es"
+                ? "Configurar orden y visibilidad de tarjetas"
+                : "Configure card order & visibility"}
             </h3>
-            <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--muted)" }}>
-              {language === "es" 
-                ? "Ordena las tarjetas con las flechas y marca cuáles quieres ver en tu panel principal." 
+            <p
+              style={{ margin: 0, fontSize: "0.78rem", color: "var(--muted)" }}
+            >
+              {language === "es"
+                ? "Ordena las tarjetas con las flechas y marca cuáles quieres ver en tu panel principal."
                 : "Order cards using the arrows and check which ones you want to display on your dashboard."}
             </p>
           </div>
-          
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "10px" }}>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: "10px",
+            }}
+          >
             {kpiOrder.map((id, index) => {
               const label = getKpiLabel(id, language);
               const isVisible = kpiVisibility[id] !== false;
               return (
-                <div key={id} style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  justifyContent: "space-between", 
-                  background: "var(--paper-2)", 
-                  padding: "10px 14px", 
-                  borderRadius: "10px",
-                  border: "1px solid var(--line)"
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", userSelect: "none" }}>
-                    <input 
-                      type="checkbox" 
+                <div
+                  key={id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    background: "var(--paper-2)",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      userSelect: "none",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
                       checked={isVisible}
                       onChange={() => toggleVisibility(id)}
                       id={`chk-${id}`}
-                      style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "var(--accent, #6366f1)" }}
+                      style={{
+                        cursor: "pointer",
+                        width: "16px",
+                        height: "16px",
+                        accentColor: "var(--accent, #6366f1)",
+                      }}
                     />
-                    <label htmlFor={`chk-${id}`} style={{ fontSize: "0.85rem", cursor: "pointer", fontWeight: "600", color: "var(--ink)" }}>
+                    <label
+                      htmlFor={`chk-${id}`}
+                      style={{
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                        fontWeight: "600",
+                        color: "var(--ink)",
+                      }}
+                    >
                       {label}
                     </label>
                   </div>
                   <div style={{ display: "flex", gap: "4px" }}>
-                    <button 
+                    <button
                       onClick={() => moveCard(index, -1)}
                       disabled={index === 0}
                       title={language === "es" ? "Subir" : "Move Up"}
-                      style={{ 
-                        padding: "4px 8px", 
-                        fontSize: "0.8rem", 
-                        borderRadius: "6px", 
-                        background: "var(--paper)", 
-                        border: "1px solid var(--line)", 
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "0.8rem",
+                        borderRadius: "6px",
+                        background: "var(--paper)",
+                        border: "1px solid var(--line)",
                         cursor: index === 0 ? "not-allowed" : "pointer",
-                        opacity: index === 0 ? 0.4 : 1
+                        opacity: index === 0 ? 0.4 : 1,
                       }}
                     >
                       ↑
                     </button>
-                    <button 
+                    <button
                       onClick={() => moveCard(index, 1)}
                       disabled={index === kpiOrder.length - 1}
                       title={language === "es" ? "Bajar" : "Move Down"}
-                      style={{ 
-                        padding: "4px 8px", 
-                        fontSize: "0.8rem", 
-                        borderRadius: "6px", 
-                        background: "var(--paper)", 
-                        border: "1px solid var(--line)", 
-                        cursor: index === kpiOrder.length - 1 ? "not-allowed" : "pointer",
-                        opacity: index === kpiOrder.length - 1 ? 0.4 : 1
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "0.8rem",
+                        borderRadius: "6px",
+                        background: "var(--paper)",
+                        border: "1px solid var(--line)",
+                        cursor:
+                          index === kpiOrder.length - 1
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity: index === kpiOrder.length - 1 ? 0.4 : 1,
                       }}
                     >
                       ↓
@@ -1167,19 +1555,39 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
               );
             })}
           </div>
-          
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--line)", paddingTop: "14px", marginTop: "4px" }}>
-            <button 
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "10px",
+              borderTop: "1px solid var(--line)",
+              paddingTop: "14px",
+              marginTop: "4px",
+            }}
+          >
+            <button
               onClick={resetToDefault}
               className="btn-secondary"
-              style={{ fontSize: "0.8rem", padding: "6px 12px", borderRadius: "6px", background: "transparent", border: "none" }}
+              style={{
+                fontSize: "0.8rem",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                background: "transparent",
+                border: "none",
+              }}
             >
               {language === "es" ? "Restablecer" : "Reset defaults"}
             </button>
-            <button 
+            <button
               onClick={() => setShowSettings(false)}
               className="btn-primary"
-              style={{ fontSize: "0.8rem", padding: "8px 16px", borderRadius: "8px", cursor: "pointer" }}
+              style={{
+                fontSize: "0.8rem",
+                padding: "8px 16px",
+                borderRadius: "8px",
+                cursor: "pointer",
+              }}
             >
               {language === "es" ? "Aplicar cambios" : "Apply changes"}
             </button>
@@ -1188,7 +1596,7 @@ function KpiGrid({ totals, language = "en" }: { totals: DashboardSummary["totals
       )}
 
       <section className="kpi-grid" aria-label="Metricas principales">
-        {kpiOrder.map(id => {
+        {kpiOrder.map((id) => {
           const isVisible = kpiVisibility[id] !== false;
           return isVisible ? renderCard(id) : null;
         })}
@@ -1224,7 +1632,7 @@ function SettingsModal({
   customProfileLabels,
   setCustomProfileLabel,
   language,
-  setLanguage
+  setLanguage,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -1250,43 +1658,101 @@ function SettingsModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <section className="settings-modal" onClick={(e) => e.stopPropagation()} style={{
-        width: "min(460px, 100%)",
-        padding: "24px",
-        border: "1px solid var(--line)",
-        borderRadius: "24px",
-        background: "var(--white)",
-        position: "relative",
-        boxShadow: "0 24px 80px rgba(0, 0, 0, 0.15)",
-        maxHeight: "90vh",
-        overflowY: "auto"
-      }}>
-        <header className="modal-header" style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: "14px", borderBottom: "1px solid var(--line)" }}>
-          <div>
-            <h2 style={{ fontSize: "1.35rem", fontWeight: "800", margin: 0 }}>{t.configTitle}</h2>
-            <p style={{ color: "var(--muted)", fontSize: "0.82rem", margin: "4px 0 0 0" }}>{t.configDesc}</p>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{
-            border: "none",
-            background: "var(--paper-2)",
-            cursor: "pointer",
-            color: "var(--ink)",
+      <section
+        className="settings-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(460px, 100%)",
+          padding: "24px",
+          border: "1px solid var(--line)",
+          borderRadius: "24px",
+          background: "var(--white)",
+          position: "relative",
+          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.15)",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
+        <header
+          className="modal-header"
+          style={{
+            marginBottom: "20px",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "6px",
-            borderRadius: "50%"
-          }}>
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            paddingBottom: "14px",
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: "1.35rem", fontWeight: "800", margin: 0 }}>
+              {t.configTitle}
+            </h2>
+            <p
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.82rem",
+                margin: "4px 0 0 0",
+              }}
+            >
+              {t.configDesc}
+            </p>
+          </div>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "var(--paper-2)",
+              cursor: "pointer",
+              color: "var(--ink)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "6px",
+              borderRadius: "50%",
+            }}
+          >
             <X size={16} />
           </button>
         </header>
 
-        <div className="settings-list" style={{ display: "flex", flexDirection: "column", gap: "20px", marginBottom: "24px" }}>
+        <div
+          className="settings-list"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+            marginBottom: "24px",
+          }}
+        >
           {/* Idioma / Language */}
-          <div className="settings-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div
+            className="settings-row"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <div style={{ flex: "1", paddingRight: "16px" }}>
-              <strong style={{ display: "block", fontSize: "0.92rem", fontWeight: "700" }}>{t.language}</strong>
-              <span style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "0.92rem",
+                  fontWeight: "700",
+                }}
+              >
+                {t.language}
+              </strong>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.78rem",
+                  color: "var(--muted)",
+                  marginTop: "2px",
+                }}
+              >
                 {t.languageDesc}
               </span>
             </div>
@@ -1302,7 +1768,7 @@ function SettingsModal({
                 fontSize: "0.82rem",
                 fontWeight: "600",
                 cursor: "pointer",
-                outline: "none"
+                outline: "none",
               }}
             >
               <option value="en">{t.english}</option>
@@ -1311,10 +1777,34 @@ function SettingsModal({
           </div>
 
           {/* Pull Automático */}
-          <div className="settings-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line-soft)", paddingTop: "16px" }}>
+          <div
+            className="settings-row"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderTop: "1px solid var(--line-soft)",
+              paddingTop: "16px",
+            }}
+          >
             <div style={{ flex: "1", paddingRight: "16px" }}>
-              <strong style={{ display: "block", fontSize: "0.92rem", fontWeight: "700" }}>{t.autoPull}</strong>
-              <span style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "0.92rem",
+                  fontWeight: "700",
+                }}
+              >
+                {t.autoPull}
+              </strong>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.78rem",
+                  color: "var(--muted)",
+                  marginTop: "2px",
+                }}
+              >
                 {t.autoPullDesc}
               </span>
             </div>
@@ -1330,16 +1820,44 @@ function SettingsModal({
 
           {/* Intervalo de Pull (sólo visible si autoPull está habilitado) */}
           {autoPullEnabled && (
-            <div className="settings-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--paper-2)", padding: "12px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+            <div
+              className="settings-row"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "var(--paper-2)",
+                padding: "12px 14px",
+                borderRadius: "12px",
+                border: "1px solid var(--line)",
+              }}
+            >
               <div style={{ flex: "1", paddingRight: "16px" }}>
-                <strong style={{ display: "block", fontSize: "0.85rem", fontWeight: "700" }}>{t.pullFreq}</strong>
-                <span style={{ display: "block", fontSize: "0.74rem", color: "var(--muted)", marginTop: "2px" }}>
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: "0.85rem",
+                    fontWeight: "700",
+                  }}
+                >
+                  {t.pullFreq}
+                </strong>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "0.74rem",
+                    color: "var(--muted)",
+                    marginTop: "2px",
+                  }}
+                >
                   {t.pullFreqDesc}
                 </span>
               </div>
               <select
                 value={autoPullInterval}
-                onChange={(e) => setAutoPullInterval(parseInt(e.target.value, 10))}
+                onChange={(e) =>
+                  setAutoPullInterval(parseInt(e.target.value, 10))
+                }
                 style={{
                   height: "32px",
                   padding: "0 10px",
@@ -1349,7 +1867,7 @@ function SettingsModal({
                   fontSize: "0.82rem",
                   fontWeight: "600",
                   cursor: "pointer",
-                  outline: "none"
+                  outline: "none",
                 }}
               >
                 <option value={30000}>{t.sec30}</option>
@@ -1361,10 +1879,34 @@ function SettingsModal({
           )}
 
           {/* Notificaciones de Escritorio */}
-          <div className="settings-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line-soft)", paddingTop: "16px" }}>
+          <div
+            className="settings-row"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderTop: "1px solid var(--line-soft)",
+              paddingTop: "16px",
+            }}
+          >
             <div style={{ flex: "1", paddingRight: "16px" }}>
-              <strong style={{ display: "block", fontSize: "0.92rem", fontWeight: "700" }}>{t.desktopAlerts}</strong>
-              <span style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "0.92rem",
+                  fontWeight: "700",
+                }}
+              >
+                {t.desktopAlerts}
+              </strong>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.78rem",
+                  color: "var(--muted)",
+                  marginTop: "2px",
+                }}
+              >
                 {t.desktopAlertsDesc}
               </span>
             </div>
@@ -1380,23 +1922,80 @@ function SettingsModal({
 
           {/* Nombres Personalizados de Fotógrafos */}
           {profiles.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid var(--line)", paddingTop: "16px" }}>
-              <strong style={{ display: "block", fontSize: "0.92rem", fontWeight: "700" }}>{t.photoNames}</strong>
-              <span style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: "4px" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                borderTop: "1px solid var(--line)",
+                paddingTop: "16px",
+              }}
+            >
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "0.92rem",
+                  fontWeight: "700",
+                }}
+              >
+                {t.photoNames}
+              </strong>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.78rem",
+                  color: "var(--muted)",
+                  marginBottom: "4px",
+                }}
+              >
                 {t.photoNamesDesc}
               </span>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
                 {profiles.map((profile) => (
-                  <div key={profile.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span className="profile-dot" style={{ background: profile.color, width: "10px", height: "10px", borderRadius: "50%", flexShrink: 0 }} />
-                    <span style={{ fontSize: "0.82rem", fontWeight: "600", width: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={profile.profile.name}>
+                  <div
+                    key={profile.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <span
+                      className="profile-dot"
+                      style={{
+                        background: profile.color,
+                        width: "10px",
+                        height: "10px",
+                        borderRadius: "50%",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "0.82rem",
+                        fontWeight: "600",
+                        width: "120px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={profile.profile.name}
+                    >
                       {profile.profile.name}
                     </span>
                     <input
                       type="text"
                       placeholder={t.customNamePlaceholder}
                       value={customProfileLabels[profile.id] || ""}
-                      onChange={(e) => setCustomProfileLabel(profile.id, e.target.value)}
+                      onChange={(e) =>
+                        setCustomProfileLabel(profile.id, e.target.value)
+                      }
                       style={{
                         flex: 1,
                         height: "32px",
@@ -1405,7 +2004,7 @@ function SettingsModal({
                         borderRadius: "6px",
                         background: "var(--white)",
                         fontSize: "0.82rem",
-                        outline: "none"
+                        outline: "none",
                       }}
                     />
                   </div>
@@ -1415,8 +2014,25 @@ function SettingsModal({
           )}
         </div>
 
-        <footer className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", paddingTop: "14px", borderTop: "1px solid var(--line)" }}>
-          <button className="text-button primary" onClick={onClose} style={{ height: "36px", padding: "0 16px", fontSize: "0.85rem", fontWeight: "600" }}>
+        <footer
+          className="modal-footer"
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            paddingTop: "14px",
+            borderTop: "1px solid var(--line)",
+          }}
+        >
+          <button
+            className="text-button primary"
+            onClick={onClose}
+            style={{
+              height: "36px",
+              padding: "0 16px",
+              fontSize: "0.85rem",
+              fontWeight: "600",
+            }}
+          >
             {t.saveClose}
           </button>
         </footer>
@@ -1435,7 +2051,7 @@ function ExportModal({
   onToggleColumn,
   onSelectAll,
   onSelectNone,
-  language = "en"
+  language = "en",
 }: {
   columns: ExportColumn[];
   selectedColumns: string[];
@@ -1460,7 +2076,11 @@ function ExportModal({
               {scopeLabel} - {rowCount} {language === "es" ? "filas" : "rows"}
             </p>
           </div>
-          <button className="icon-button" onClick={onClose} title={language === "es" ? "Cerrar" : "Close"}>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            title={language === "es" ? "Cerrar" : "Close"}
+          >
             x
           </button>
         </header>
@@ -1476,7 +2096,8 @@ function ExportModal({
 
         <div className="column-grid">
           {columns.map((column) => {
-            const translatedLabel = COLUMN_TRANSLATIONS[language][column.label] || column.label;
+            const translatedLabel =
+              COLUMN_TRANSLATIONS[language][column.label] || column.label;
             return (
               <label className="column-toggle" key={column.key}>
                 <input
@@ -1494,7 +2115,11 @@ function ExportModal({
           <button className="text-button" onClick={onClose}>
             {t.cancel}
           </button>
-          <button className="text-button primary" disabled={!selectedColumns.length || !rowCount} onClick={onExport}>
+          <button
+            className="text-button primary"
+            disabled={!selectedColumns.length || !rowCount}
+            onClick={onExport}
+          >
             <Download size={16} />
             {language === "es" ? "Descargar CSV" : "Download CSV"}
           </button>
@@ -1505,22 +2130,35 @@ function ExportModal({
 }
 
 function SaleThumbnails({ sale }: { sale: Sale }) {
-  if (!sale.photographs.length) return <span className="photo-count">{sale.photos}</span>;
+  if (!sale.photographs.length)
+    return <span className="photo-count">{sale.photos}</span>;
 
   return (
-    <div className="thumb-cell" aria-label={`${sale.photographs.length} fotografias`}>
+    <div
+      className="thumb-cell"
+      aria-label={`${sale.photographs.length} fotografias`}
+    >
       <span className="photo-count">{sale.photos}</span>
       <div className="thumb-stack">
         {sale.photographs.slice(0, 4).map((photo) => (
           <span className="thumb-wrap" key={photo.id}>
-            <img alt={photo.originalFileName || "Fotografia vendida"} className="sale-thumb" src={photo.thumbnailUrl || photo.url} />
+            <img
+              alt={photo.originalFileName || "Fotografia vendida"}
+              className="sale-thumb"
+              src={photo.thumbnailUrl || photo.url}
+            />
             <span className="thumb-preview">
-              <img alt={photo.originalFileName || "Fotografia vendida"} src={photo.url || photo.thumbnailUrl} />
+              <img
+                alt={photo.originalFileName || "Fotografia vendida"}
+                src={photo.url || photo.thumbnailUrl}
+              />
               <span>{photo.originalFileName || photo.id}</span>
             </span>
           </span>
         ))}
-        {sale.photographs.length > 4 ? <span className="thumb-more">+{sale.photographs.length - 4}</span> : null}
+        {sale.photographs.length > 4 ? (
+          <span className="thumb-more">+{sale.photographs.length - 4}</span>
+        ) : null}
       </div>
     </div>
   );
@@ -1531,7 +2169,7 @@ function DetailPhotoStrip({
   profileId,
   profileName,
   profileColor,
-  onOpenLightbox
+  onOpenLightbox,
 }: {
   sale?: Sale;
   profileId?: string;
@@ -1551,7 +2189,7 @@ function DetailPhotoStrip({
     profileId: profileId || "",
     profileName: profileName || "",
     profileColor: profileColor || "",
-    takenDate: photo.takenDate
+    takenDate: photo.takenDate,
   }));
 
   return (
@@ -1567,9 +2205,16 @@ function DetailPhotoStrip({
           }}
           style={{ cursor: "pointer" }}
         >
-          <img alt={photoItem.originalFileName || "Fotografia vendida"} className="detail-thumb" src={photoItem.thumbnailUrl || photoItem.url} />
+          <img
+            alt={photoItem.originalFileName || "Fotografia vendida"}
+            className="detail-thumb"
+            src={photoItem.thumbnailUrl || photoItem.url}
+          />
           <span className="thumb-preview">
-            <img alt={photoItem.originalFileName || "Fotografia vendida"} src={photoItem.url || photoItem.thumbnailUrl} />
+            <img
+              alt={photoItem.originalFileName || "Fotografia vendida"}
+              src={photoItem.url || photoItem.thumbnailUrl}
+            />
             <span>{photoItem.originalFileName || photoItem.id}</span>
           </span>
         </span>
@@ -1592,7 +2237,10 @@ function ConsolidatedDashboard({
   availableYears,
   allProfiles,
   language = "en",
-  customEvents = []
+  customEvents = [],
+  resolvedGrouping,
+  setChartGrouping,
+  isLargeRange,
 }: {
   consolidated: ConsolidatedSummary;
   trendData: ConsolidatedPoint[];
@@ -1608,6 +2256,9 @@ function ConsolidatedDashboard({
   allProfiles: DashboardSummary[];
   language?: Language;
   customEvents?: CustomEvent[];
+  resolvedGrouping: "daily" | "weekly" | "monthly";
+  setChartGrouping: (val: "daily" | "weekly" | "monthly") => void;
+  isLargeRange: boolean;
 }) {
   const [metric, setMetric] = useState<"revenue" | "photos">("revenue");
   const [selectedEventFilter, setSelectedEventFilter] = useState<string>("all");
@@ -1615,8 +2266,8 @@ function ConsolidatedDashboard({
 
   const allAlbumTitles = useMemo(() => {
     const titles = new Set<string>();
-    allProfiles.forEach(profile => {
-      profile.albums.forEach(album => {
+    allProfiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
         if (album.title) {
           titles.add(album.title);
         }
@@ -1680,21 +2331,27 @@ function ConsolidatedDashboard({
 
     if (selectedEventFilter.startsWith("custom:")) {
       const id = selectedEventFilter.replace("custom:", "");
-      targetCustomEvent = customEvents.find(e => e.id === id) || null;
+      targetCustomEvent = customEvents.find((e) => e.id === id) || null;
     } else if (selectedEventFilter.startsWith("album:")) {
       targetAlbumTitle = selectedEventFilter.replace("album:", "");
     }
 
-    const hasSubEvents = targetCustomEvent && targetCustomEvent.subEvents && targetCustomEvent.subEvents.length > 0;
+    const hasSubEvents =
+      targetCustomEvent &&
+      targetCustomEvent.subEvents &&
+      targetCustomEvent.subEvents.length > 0;
 
-    const groups: Record<string, {
-      date: Date;
-      label: string;
-      totalRevenue: number;
-      totalPhotos: number;
-      totalSales: number;
-      [lineId: string]: any;
-    }> = {};
+    const groups: Record<
+      string,
+      {
+        date: Date;
+        label: string;
+        totalRevenue: number;
+        totalPhotos: number;
+        totalSales: number;
+        [lineId: string]: any;
+      }
+    > = {};
 
     allProfiles.forEach((profile) => {
       profile.sales.forEach((sale) => {
@@ -1706,8 +2363,10 @@ function ConsolidatedDashboard({
 
         let isMatch = false;
         if (targetCustomEvent) {
-          const matchesPhotoAlbum = sale.photographs?.some(p => targetCustomEvent!.albumIds.includes(p.albumId));
-          const matchesAlbumTitle = targetCustomEvent.albumIds.some(aid => {
+          const matchesPhotoAlbum = sale.photographs?.some((p) =>
+            targetCustomEvent!.albumIds.includes(p.albumId),
+          );
+          const matchesAlbumTitle = targetCustomEvent.albumIds.some((aid) => {
             const alb = albumMap[aid];
             return alb && isAlbumMatch(sale.album, alb.title);
           });
@@ -1716,11 +2375,12 @@ function ConsolidatedDashboard({
           isMatch = isAlbumMatch(sale.album, targetAlbumTitle);
         }
 
-        if (!isMatch) return;
-
-        const key = toLocalYYYYMMDD(saleDate);
+        const { key, label } = getGroupingKeyAndLabel(
+          saleDate,
+          resolvedGrouping,
+          language,
+        );
         if (!groups[key]) {
-          const label = saleDate.toLocaleDateString("es-AR", { month: "short", day: "2-digit" });
           groups[key] = {
             date: saleDate,
             label,
@@ -1728,16 +2388,16 @@ function ConsolidatedDashboard({
             totalPhotos: 0,
             totalSales: 0,
           };
-          
+
           if (hasSubEvents) {
-            targetCustomEvent!.subEvents.forEach(sub => {
+            targetCustomEvent!.subEvents.forEach((sub) => {
               groups[key][`${sub.id}_revenue`] = 0;
               groups[key][`${sub.id}_photos`] = 0;
             });
             groups[key][`unclassified_revenue`] = 0;
             groups[key][`unclassified_photos`] = 0;
           } else {
-            allProfiles.forEach(p => {
+            allProfiles.forEach((p) => {
               groups[key][`${p.id}_revenue`] = 0;
               groups[key][`${p.id}_photos`] = 0;
             });
@@ -1745,7 +2405,7 @@ function ConsolidatedDashboard({
         }
 
         groups[key].totalRevenue += sale.total;
-        groups[key].totalPhotos += (sale.photos || 0);
+        groups[key].totalPhotos += sale.photos || 0;
         groups[key].totalSales += 1;
 
         if (hasSubEvents) {
@@ -1754,11 +2414,14 @@ function ConsolidatedDashboard({
             const allocations: Record<string, number> = {};
             let unclassifiedCount = 0;
 
-            photos.forEach(p => {
+            photos.forEach((p) => {
               const photoDate = getPhotoDate(p, sale, albumMap);
-              const matchedSub = targetCustomEvent!.subEvents.find(s => s.date === photoDate);
+              const matchedSub = targetCustomEvent!.subEvents.find(
+                (s) => s.date === photoDate,
+              );
               if (matchedSub) {
-                allocations[matchedSub.id] = (allocations[matchedSub.id] || 0) + 1;
+                allocations[matchedSub.id] =
+                  (allocations[matchedSub.id] || 0) + 1;
               } else {
                 unclassifiedCount += 1;
               }
@@ -1767,22 +2430,32 @@ function ConsolidatedDashboard({
             const totalPhotos = photos.length;
             Object.entries(allocations).forEach(([subId, count]) => {
               const ratio = count / totalPhotos;
-              groups[key][`${subId}_revenue`] = (groups[key][`${subId}_revenue`] || 0) + (sale.total * ratio);
-              groups[key][`${subId}_photos`] = (groups[key][`${subId}_photos`] || 0) + ((sale.photos || 0) * ratio);
+              groups[key][`${subId}_revenue`] =
+                (groups[key][`${subId}_revenue`] || 0) + sale.total * ratio;
+              groups[key][`${subId}_photos`] =
+                (groups[key][`${subId}_photos`] || 0) +
+                (sale.photos || 0) * ratio;
             });
 
             if (unclassifiedCount > 0) {
               const ratio = unclassifiedCount / totalPhotos;
-              groups[key][`unclassified_revenue`] = (groups[key][`unclassified_revenue`] || 0) + (sale.total * ratio);
-              groups[key][`unclassified_photos`] = (groups[key][`unclassified_photos`] || 0) + ((sale.photos || 0) * ratio);
+              groups[key][`unclassified_revenue`] =
+                (groups[key][`unclassified_revenue`] || 0) + sale.total * ratio;
+              groups[key][`unclassified_photos`] =
+                (groups[key][`unclassified_photos`] || 0) +
+                (sale.photos || 0) * ratio;
             }
           } else {
-            groups[key][`unclassified_revenue`] = (groups[key][`unclassified_revenue`] || 0) + sale.total;
-            groups[key][`unclassified_photos`] = (groups[key][`unclassified_photos`] || 0) + (sale.photos || 0);
+            groups[key][`unclassified_revenue`] =
+              (groups[key][`unclassified_revenue`] || 0) + sale.total;
+            groups[key][`unclassified_photos`] =
+              (groups[key][`unclassified_photos`] || 0) + (sale.photos || 0);
           }
         } else {
-          groups[key][`${profile.id}_revenue`] = (groups[key][`${profile.id}_revenue`] || 0) + sale.total;
-          groups[key][`${profile.id}_photos`] = (groups[key][`${profile.id}_photos`] || 0) + (sale.photos || 0);
+          groups[key][`${profile.id}_revenue`] =
+            (groups[key][`${profile.id}_revenue`] || 0) + sale.total;
+          groups[key][`${profile.id}_photos`] =
+            (groups[key][`${profile.id}_photos`] || 0) + (sale.photos || 0);
         }
       });
     });
@@ -1799,56 +2472,98 @@ function ConsolidatedDashboard({
       };
 
       if (hasSubEvents) {
-        targetCustomEvent!.subEvents.forEach(sub => {
-          point[`${sub.id}_revenue`] = Number((g[`${sub.id}_revenue`] || 0).toFixed(2));
+        targetCustomEvent!.subEvents.forEach((sub) => {
+          point[`${sub.id}_revenue`] = Number(
+            (g[`${sub.id}_revenue`] || 0).toFixed(2),
+          );
           point[`${sub.id}_photos`] = Math.round(g[`${sub.id}_photos`] || 0);
         });
-        point[`unclassified_revenue`] = Number((g[`unclassified_revenue`] || 0).toFixed(2));
-        point[`unclassified_photos`] = Math.round(g[`unclassified_photos`] || 0);
+        point[`unclassified_revenue`] = Number(
+          (g[`unclassified_revenue`] || 0).toFixed(2),
+        );
+        point[`unclassified_photos`] = Math.round(
+          g[`unclassified_photos`] || 0,
+        );
       } else {
         allProfiles.forEach((p) => {
-          point[`${p.id}_revenue`] = Number((g[`${p.id}_revenue`] || 0).toFixed(2));
+          point[`${p.id}_revenue`] = Number(
+            (g[`${p.id}_revenue`] || 0).toFixed(2),
+          );
           point[`${p.id}_photos`] = Math.round(g[`${p.id}_photos`] || 0);
         });
       }
 
       return point;
     });
-  }, [trendData, selectedEventFilter, customEvents, allProfiles, filterType, selectedYear, customStart, customEnd, albumMap]);
+  }, [
+    trendData,
+    selectedEventFilter,
+    customEvents,
+    allProfiles,
+    filterType,
+    selectedYear,
+    customStart,
+    customEnd,
+    albumMap,
+    resolvedGrouping,
+    language,
+  ]);
 
   const chartLines = useMemo(() => {
     let targetCustomEvent: CustomEvent | null = null;
     if (selectedEventFilter.startsWith("custom:")) {
       const id = selectedEventFilter.replace("custom:", "");
-      targetCustomEvent = customEvents.find(e => e.id === id) || null;
+      targetCustomEvent = customEvents.find((e) => e.id === id) || null;
     }
 
-    const hasSubEvents = targetCustomEvent && targetCustomEvent.subEvents && targetCustomEvent.subEvents.length > 0;
+    const hasSubEvents =
+      targetCustomEvent &&
+      targetCustomEvent.subEvents &&
+      targetCustomEvent.subEvents.length > 0;
 
     if (hasSubEvents) {
-      const colors = ["var(--accent, #6366f1)", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
-      const lines: { dataKey: string; name: string; color: string; strokeWidth: number }[] = [];
+      const colors = [
+        "var(--accent, #6366f1)",
+        "#10b981",
+        "#f59e0b",
+        "#ec4899",
+        "#8b5cf6",
+        "#06b6d4",
+      ];
+      const lines: {
+        dataKey: string;
+        name: string;
+        color: string;
+        strokeWidth: number;
+      }[] = [];
 
       targetCustomEvent!.subEvents.forEach((sub, idx) => {
         lines.push({
-          dataKey: metric === "revenue" ? `${sub.id}_revenue` : `${sub.id}_photos`,
+          dataKey:
+            metric === "revenue" ? `${sub.id}_revenue` : `${sub.id}_photos`,
           name: sub.name,
           color: colors[idx % colors.length],
-          strokeWidth: 4
+          strokeWidth: 4,
         });
       });
 
-      const hasUnclassified = filteredChartData.some(pt => {
-        const val = metric === "revenue" ? pt.unclassified_revenue : pt.unclassified_photos;
+      const hasUnclassified = filteredChartData.some((pt) => {
+        const val =
+          metric === "revenue"
+            ? pt.unclassified_revenue
+            : pt.unclassified_photos;
         return val && val > 0;
       });
 
       if (hasUnclassified) {
         lines.push({
-          dataKey: metric === "revenue" ? "unclassified_revenue" : "unclassified_photos",
+          dataKey:
+            metric === "revenue"
+              ? "unclassified_revenue"
+              : "unclassified_photos",
           name: language === "es" ? "Otros" : "Others",
           color: "#9ca3af",
-          strokeWidth: 2
+          strokeWidth: 2,
         });
       }
 
@@ -1856,18 +2571,26 @@ function ConsolidatedDashboard({
         dataKey: metric === "revenue" ? "totalRevenue" : "totalPhotos",
         name: "Total",
         color: "var(--ink, #000000)",
-        strokeWidth: 2
+        strokeWidth: 2,
       });
 
       return lines;
     } else {
-      const lines: { dataKey: string; name: string; color: string; strokeWidth: number }[] = [];
+      const lines: {
+        dataKey: string;
+        name: string;
+        color: string;
+        strokeWidth: number;
+      }[] = [];
       consolidated.profiles.forEach((profile) => {
         lines.push({
-          dataKey: metric === "revenue" ? `${profile.id}_revenue` : `${profile.id}_photos`,
+          dataKey:
+            metric === "revenue"
+              ? `${profile.id}_revenue`
+              : `${profile.id}_photos`,
           name: profile.label,
           color: profile.color,
-          strokeWidth: 4
+          strokeWidth: 4,
         });
       });
 
@@ -1875,46 +2598,95 @@ function ConsolidatedDashboard({
         dataKey: metric === "revenue" ? "totalRevenue" : "totalPhotos",
         name: "Total",
         color: "var(--ink, #000000)",
-        strokeWidth: 2
+        strokeWidth: 2,
       });
 
       return lines;
     }
-  }, [selectedEventFilter, customEvents, consolidated.profiles, metric, language, filteredChartData]);
+  }, [
+    selectedEventFilter,
+    customEvents,
+    consolidated.profiles,
+    metric,
+    language,
+    filteredChartData,
+  ]);
 
   const consolidatedAlbums = useMemo(() => {
-    const albumMap: Record<string, AlbumInsight & { netRevenue: number }> = {};
-    allProfiles.forEach(profile => {
-      profile.albums.forEach(album => {
-        const albumSales = profile.sales.filter(s => isAlbumMatch(s.album, album.title));
-        const albumNetRevenue = album.netRevenue || albumSales.reduce((sum, s) => sum + s.total, 0);
+    const mergedAlbums: Record<string, AlbumInsight & { netRevenue: number }> = {};
+    allProfiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
+        const albumSales = profile.sales.filter((s) =>
+          isAlbumMatch(s.album, album.title),
+        );
+        const albumNetRevenue =
+          album.netRevenue || albumSales.reduce((sum, s) => sum + s.total, 0);
 
-        if (!albumMap[album.id]) {
-          albumMap[album.id] = { ...album, netRevenue: albumNetRevenue };
+        if (!mergedAlbums[album.id]) {
+          mergedAlbums[album.id] = { ...album, netRevenue: albumNetRevenue };
         } else {
-          albumMap[album.id].views += album.views;
-          albumMap[album.id].photos += album.photos;
-          albumMap[album.id].soldPhotos += album.soldPhotos;
-          albumMap[album.id].sales += album.sales;
-          albumMap[album.id].revenue += album.revenue;
-          albumMap[album.id].netRevenue += albumNetRevenue;
-          albumMap[album.id].conversion = albumMap[album.id].photos > 0 ? (albumMap[album.id].soldPhotos / albumMap[album.id].photos) * 100 : 0;
+          mergedAlbums[album.id].views += album.views;
+          mergedAlbums[album.id].photos += album.photos;
+          mergedAlbums[album.id].soldPhotos += album.soldPhotos;
+          mergedAlbums[album.id].sales += album.sales;
+          mergedAlbums[album.id].revenue += album.revenue;
+          mergedAlbums[album.id].netRevenue += albumNetRevenue;
+          mergedAlbums[album.id].conversion =
+            mergedAlbums[album.id].photos > 0
+              ? (mergedAlbums[album.id].soldPhotos / mergedAlbums[album.id].photos) *
+                100
+              : 0;
         }
       });
     });
-    return Object.values(albumMap).sort((a, b) => b.revenue - a.revenue);
-  }, [allProfiles]);
+
+    const albums = Object.values(mergedAlbums).sort((a, b) => b.revenue - a.revenue);
+
+    if (selectedEventFilter === "all") {
+      return albums;
+    }
+
+    if (selectedEventFilter.startsWith("custom:")) {
+      const eventId = selectedEventFilter.replace("custom:", "");
+      const targetCustomEvent = customEvents.find((event) => event.id === eventId);
+      if (!targetCustomEvent) {
+        return [];
+      }
+
+      return albums.filter((album) => targetCustomEvent.albumIds.includes(album.id));
+    }
+
+    if (selectedEventFilter.startsWith("album:")) {
+      const targetAlbumTitle = selectedEventFilter.replace("album:", "");
+      return albums.filter((album) => isAlbumMatch(album.title, targetAlbumTitle));
+    }
+
+    return albums;
+  }, [allProfiles, selectedEventFilter, customEvents]);
 
   return (
     <>
       <KpiGrid totals={consolidated.totals} language={language} />
       <section className="panel">
-        <header className="panel-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <header
+          className="panel-header"
+          style={{
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: "16px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <div>
               <h2>{t.consolidatedSales}</h2>
               <p>
-                {language === "es" 
+                {language === "es"
                   ? `Comparación de ${metric === "revenue" ? "ingresos netos" : "cantidad de fotos vendidas"} por periodo.`
                   : `Comparison of ${metric === "revenue" ? "net revenue" : "quantity of sold photos"} by period.`}
               </p>
@@ -1925,29 +2697,57 @@ function ConsolidatedDashboard({
                 <select
                   value={selectedEventFilter}
                   onChange={(e) => setSelectedEventFilter(e.target.value)}
-                  aria-label={language === "es" ? "Filtrar por evento o álbum" : "Filter by event or album"}
+                  aria-label={
+                    language === "es"
+                      ? "Filtrar por evento o álbum"
+                      : "Filter by event or album"
+                  }
                 >
-                  <option value="all">{language === "es" ? "Todos los eventos" : "All Events"}</option>
-                  
+                  <option value="all">
+                    {language === "es" ? "Todos los eventos" : "All Events"}
+                  </option>
+
                   {customEvents.length > 0 && (
-                    <optgroup label={language === "es" ? "Eventos Agrupados" : "Grouped Events"}>
-                      {customEvents.map(evt => (
-                        <option key={`custom:${evt.id}`} value={`custom:${evt.id}`}>{evt.name}</option>
+                    <optgroup
+                      label={
+                        language === "es"
+                          ? "Eventos Agrupados"
+                          : "Grouped Events"
+                      }
+                    >
+                      {customEvents.map((evt) => (
+                        <option
+                          key={`custom:${evt.id}`}
+                          value={`custom:${evt.id}`}
+                        >
+                          {evt.name}
+                        </option>
                       ))}
                     </optgroup>
                   )}
-                  
+
                   {allAlbumTitles.length > 0 && (
                     <optgroup label={language === "es" ? "Álbumes" : "Albums"}>
-                      {allAlbumTitles.map(title => (
-                        <option key={`album:${title}`} value={`album:${title}`}>{title}</option>
+                      {allAlbumTitles.map((title) => (
+                        <option key={`album:${title}`} value={`album:${title}`}>
+                          {title}
+                        </option>
                       ))}
                     </optgroup>
                   )}
                 </select>
               </div>
 
-              <div style={{ display: "flex", gap: "4px", background: "var(--paper-2)", padding: "4px", borderRadius: "999px", border: "1px solid var(--line)" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "4px",
+                  background: "var(--paper-2)",
+                  padding: "4px",
+                  borderRadius: "999px",
+                  border: "1px solid var(--line)",
+                }}
+              >
                 <button
                   className={`filter-pill ${metric === "revenue" ? "active" : ""}`}
                   style={{
@@ -1955,11 +2755,12 @@ function ConsolidatedDashboard({
                     padding: "0 12px",
                     border: "none",
                     borderRadius: "999px",
-                    background: metric === "revenue" ? "var(--ink)" : "transparent",
+                    background:
+                      metric === "revenue" ? "var(--ink)" : "transparent",
                     color: metric === "revenue" ? "var(--white)" : "var(--ink)",
                     fontSize: "0.78rem",
                     fontWeight: "600",
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                   onClick={() => setMetric("revenue")}
                 >
@@ -1972,11 +2773,12 @@ function ConsolidatedDashboard({
                     padding: "0 12px",
                     border: "none",
                     borderRadius: "999px",
-                    background: metric === "photos" ? "var(--ink)" : "transparent",
+                    background:
+                      metric === "photos" ? "var(--ink)" : "transparent",
                     color: metric === "photos" ? "var(--white)" : "var(--ink)",
                     fontSize: "0.78rem",
                     fontWeight: "600",
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                   onClick={() => setMetric("photos")}
                 >
@@ -1987,15 +2789,25 @@ function ConsolidatedDashboard({
             </div>
           </div>
 
-          <div className="filter-bar" style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "10px",
-            alignItems: "center",
-            padding: "8px 0",
-            borderTop: "1px solid var(--line-soft)"
-          }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "var(--muted)", marginRight: "8px" }}>
+          <div
+            className="filter-bar"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "10px",
+              alignItems: "center",
+              padding: "8px 0",
+              borderTop: "1px solid var(--line-soft)",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.85rem",
+                fontWeight: "600",
+                color: "var(--muted)",
+                marginRight: "8px",
+              }}
+            >
               {language === "es" ? "Filtrar gráfico:" : "Filter chart:"}
             </span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
@@ -2023,8 +2835,8 @@ function ConsolidatedDashboard({
               >
                 YTD
               </button>
-              
-              {availableYears.map(year => (
+
+              {availableYears.map((year) => (
                 <button
                   key={year}
                   className={`filter-pill ${filterType === "year" && selectedYear === year ? "active" : ""}`}
@@ -2036,7 +2848,7 @@ function ConsolidatedDashboard({
                   {year}
                 </button>
               ))}
-              
+
               <button
                 className={`filter-pill ${filterType === "custom" ? "active" : ""}`}
                 onClick={() => setFilterType("custom")}
@@ -2045,50 +2857,157 @@ function ConsolidatedDashboard({
               </button>
             </div>
 
-            {filterType === "custom" && (
-              <div className="custom-range-inputs" style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginLeft: "auto",
-                background: "var(--paper-2)",
-                padding: "4px 12px",
-                borderRadius: "999px",
-                border: "1px solid var(--line)"
-              }}>
-                <input
-                  type="date"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--ink)",
-                    fontSize: "0.85rem",
-                    outline: "none"
-                  }}
-                />
-                <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{language === "es" ? "a" : "to"}</span>
-                <input
-                  type="date"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--ink)",
-                    fontSize: "0.85rem",
-                    outline: "none"
-                  }}
-                />
+            {(isLargeRange || filterType === "custom") && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginLeft: "auto",
+                  flexWrap: "wrap",
+                }}
+              >
+                {isLargeRange && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        color: "var(--muted)",
+                      }}
+                    >
+                      {language === "es" ? "Agrupación:" : "Grouping:"}
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "4px",
+                        background: "var(--paper-2)",
+                        padding: "4px",
+                        borderRadius: "999px",
+                        border: "1px solid var(--line)",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className={`filter-pill ${resolvedGrouping === "weekly" ? "active" : ""}`}
+                        style={{
+                          height: "28px",
+                          padding: "0 12px",
+                          border: "none",
+                          borderRadius: "999px",
+                          background:
+                            resolvedGrouping === "weekly"
+                              ? "var(--ink)"
+                              : "transparent",
+                          color:
+                            resolvedGrouping === "weekly"
+                              ? "var(--white)"
+                              : "var(--ink)",
+                          fontSize: "0.78rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setChartGrouping("weekly")}
+                      >
+                        {language === "es" ? "Semanal" : "Weekly"}
+                      </button>
+                      <button
+                        type="button"
+                        className={`filter-pill ${resolvedGrouping === "monthly" ? "active" : ""}`}
+                        style={{
+                          height: "28px",
+                          padding: "0 12px",
+                          border: "none",
+                          borderRadius: "999px",
+                          background:
+                            resolvedGrouping === "monthly"
+                              ? "var(--ink)"
+                              : "transparent",
+                          color:
+                            resolvedGrouping === "monthly"
+                              ? "var(--white)"
+                              : "var(--ink)",
+                          fontSize: "0.78rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setChartGrouping("monthly")}
+                      >
+                        {language === "es" ? "Mensual" : "Monthly"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {filterType === "custom" && (
+                  <div
+                    className="custom-range-inputs"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "var(--paper-2)",
+                      padding: "4px 12px",
+                      borderRadius: "999px",
+                      border: "1px solid var(--line)",
+                    }}
+                  >
+                    <input
+                      type="date"
+                      value={customStart}
+                      onChange={(e) => setCustomStart(e.target.value)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--ink)",
+                        fontSize: "0.85rem",
+                        outline: "none",
+                      }}
+                    />
+                    <span
+                      style={{ fontSize: "0.85rem", color: "var(--muted)" }}
+                    >
+                      {language === "es" ? "a" : "to"}
+                    </span>
+                    <input
+                      type="date"
+                      value={customEnd}
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--ink)",
+                        fontSize: "0.85rem",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
         </header>
         <div className="chart-wrap">
           {filteredChartData.length === 0 ? (
-            <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--muted)", fontSize: "0.9rem" }}>
-              {language === "es" ? "Sin ventas en el rango seleccionado" : "No sales in selected range"}
+            <div
+              style={{
+                display: "grid",
+                placeItems: "center",
+                height: "100%",
+                color: "var(--muted)",
+                fontSize: "0.9rem",
+              }}
+            >
+              {language === "es"
+                ? "Sin ventas en el rango seleccionado"
+                : "No sales in selected range"}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -2098,10 +3017,16 @@ function ConsolidatedDashboard({
                 <YAxis
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(value) => (metric === "revenue" ? `$${value}` : String(value))}
+                  tickFormatter={(value) =>
+                    metric === "revenue" ? `$${value}` : String(value)
+                  }
                 />
                 <Tooltip
-                  formatter={(value) => (metric === "revenue" ? money.format(Number(value)) : `${value} ${language === "es" ? "fotos" : "photos"}`)}
+                  formatter={(value) =>
+                    metric === "revenue"
+                      ? money.format(Number(value))
+                      : `${value} ${language === "es" ? "fotos" : "photos"}`
+                  }
                 />
                 {chartLines.map((line) => (
                   <Line
@@ -2132,7 +3057,10 @@ function ConsolidatedDashboard({
           {consolidated.profiles.map((profile) => (
             <article className="comparison-card" key={profile.id}>
               <header>
-                <span className="profile-dot" style={{ background: profile.color }} />
+                <span
+                  className="profile-dot"
+                  style={{ background: profile.color }}
+                />
                 <strong>{profile.label}</strong>
               </header>
               <h3>{money.format(profile.revenue)}</h3>
@@ -2159,7 +3087,7 @@ function ConsolidatedDashboard({
         </div>
       </section>
 
-      <section className="sales-section" style={{ marginTop: '24px' }}>
+      <section className="sales-section" style={{ marginTop: "24px" }}>
         <article className="panel">
           <header className="table-toolbar">
             <div>
@@ -2186,20 +3114,41 @@ function ConsolidatedDashboard({
               <tbody>
                 {consolidatedAlbums.map((album) => (
                   <tr key={album.id}>
-                    <td data-label={t.event}><strong>{album.title}</strong></td>
-                    <td data-label={t.date}>{formatDateOnly(album.createdAt, language)}</td>
-                    <td data-label={t.tableGross}>{money.format(album.revenue)}</td>
-                    <td data-label={t.tableNet}>{money.format(album.netRevenue)}</td>
+                    <td data-label={t.event}>
+                      <strong>{album.title}</strong>
+                    </td>
+                    <td data-label={t.date}>
+                      {formatDateOnly(album.createdAt, language)}
+                    </td>
+                    <td data-label={t.tableGross}>
+                      {money.format(album.revenue)}
+                    </td>
+                    <td data-label={t.tableNet}>
+                      {money.format(album.netRevenue)}
+                    </td>
                     <td data-label={t.sales}>{album.sales}</td>
-                    <td data-label={t.publishedPhotos}>{compact.format(album.photos)}</td>
-                    <td data-label={t.photosSold}>{compact.format(album.soldPhotos)}</td>
+                    <td data-label={t.publishedPhotos}>
+                      {compact.format(album.photos)}
+                    </td>
+                    <td data-label={t.photosSold}>
+                      {compact.format(album.soldPhotos)}
+                    </td>
                     <td data-label={t.ratio}>{album.conversion.toFixed(1)}%</td>
                     <td data-label={t.views}>{compact.format(album.views)}</td>
                   </tr>
                 ))}
                 {consolidatedAlbums.length === 0 && (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: '20px' }}>{t.noEvents}</td>
+                    <td
+                      colSpan={9}
+                      style={{
+                        textAlign: "center",
+                        color: "var(--muted)",
+                        padding: "20px",
+                      }}
+                    >
+                      {t.noEvents}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -2226,7 +3175,10 @@ function ProfileDashboard({
   setCustomEnd,
   availableYears,
   language = "en",
-  onOpenLightbox
+  onOpenLightbox,
+  resolvedGrouping,
+  setChartGrouping,
+  isLargeRange,
 }: {
   summary: DashboardSummary;
   selectedSale?: Sale;
@@ -2243,6 +3195,9 @@ function ProfileDashboard({
   availableYears: number[];
   language?: Language;
   onOpenLightbox?: (photo: GalleryPhotoItem, list?: GalleryPhotoItem[]) => void;
+  resolvedGrouping: "daily" | "weekly" | "monthly";
+  setChartGrouping: (val: "daily" | "weekly" | "monthly") => void;
+  isLargeRange: boolean;
 }) {
   const [metric, setMetric] = useState<"revenue" | "photos">("revenue");
   const [selectedAlbum, setSelectedAlbum] = useState<string>("all");
@@ -2261,7 +3216,7 @@ function ProfileDashboard({
 
   const uniqueAlbums = useMemo(() => {
     const albums = new Set<string>();
-    summary.sales.forEach(sale => {
+    summary.sales.forEach((sale) => {
       if (sale.album) albums.add(sale.album);
     });
     return Array.from(albums).sort();
@@ -2269,7 +3224,7 @@ function ProfileDashboard({
 
   const filteredSales = useMemo(() => {
     if (selectedAlbum === "all") return summary.sales;
-    return summary.sales.filter(sale => sale.album === selectedAlbum);
+    return summary.sales.filter((sale) => sale.album === selectedAlbum);
   }, [summary.sales, selectedAlbum]);
 
   const totalPages = Math.ceil(filteredSales.length / pageSize);
@@ -2284,22 +3239,54 @@ function ProfileDashboard({
 
       <section className="analysis-grid">
         <article className="panel">
-          <header className="panel-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "16px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <header
+            className="panel-header"
+            style={{
+              flexDirection: "column",
+              alignItems: "stretch",
+              gap: "16px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <div>
                 <h2>
-                  {metric === "revenue" 
-                    ? (language === "es" ? "Tendencia de ingresos" : "Revenue Trend") 
-                    : (language === "es" ? "Tendencia de fotos vendidas" : "Photos Sold Trend")}
+                  {metric === "revenue"
+                    ? language === "es"
+                      ? "Tendencia de ingresos"
+                      : "Revenue Trend"
+                    : language === "es"
+                      ? "Tendencia de fotos vendidas"
+                      : "Photos Sold Trend"}
                 </h2>
                 <p>
-                  {metric === "revenue" 
-                    ? (language === "es" ? "Evolución reciente de ventas aprobadas." : "Recent evolution of approved sales.") 
-                    : (language === "es" ? "Cantidad de fotos vendidas por periodo." : "Quantity of photos sold per period.")}
+                  {metric === "revenue"
+                    ? language === "es"
+                      ? "Evolución reciente de ventas aprobadas."
+                      : "Recent evolution of approved sales."
+                    : language === "es"
+                      ? "Cantidad de fotos vendidas por periodo."
+                      : "Quantity of photos sold per period."}
                 </p>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div style={{ display: "flex", gap: "4px", background: "var(--paper-2)", padding: "4px", borderRadius: "999px", border: "1px solid var(--line)" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "12px" }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "4px",
+                    background: "var(--paper-2)",
+                    padding: "4px",
+                    borderRadius: "999px",
+                    border: "1px solid var(--line)",
+                  }}
+                >
                   <button
                     className={`filter-pill ${metric === "revenue" ? "active" : ""}`}
                     style={{
@@ -2307,11 +3294,13 @@ function ProfileDashboard({
                       padding: "0 12px",
                       border: "none",
                       borderRadius: "999px",
-                      background: metric === "revenue" ? "var(--ink)" : "transparent",
-                      color: metric === "revenue" ? "var(--white)" : "var(--ink)",
+                      background:
+                        metric === "revenue" ? "var(--ink)" : "transparent",
+                      color:
+                        metric === "revenue" ? "var(--white)" : "var(--ink)",
                       fontSize: "0.78rem",
                       fontWeight: "600",
-                      cursor: "pointer"
+                      cursor: "pointer",
                     }}
                     onClick={() => setMetric("revenue")}
                   >
@@ -2324,11 +3313,13 @@ function ProfileDashboard({
                       padding: "0 12px",
                       border: "none",
                       borderRadius: "999px",
-                      background: metric === "photos" ? "var(--ink)" : "transparent",
-                      color: metric === "photos" ? "var(--white)" : "var(--ink)",
+                      background:
+                        metric === "photos" ? "var(--ink)" : "transparent",
+                      color:
+                        metric === "photos" ? "var(--white)" : "var(--ink)",
                       fontSize: "0.78rem",
                       fontWeight: "600",
-                      cursor: "pointer"
+                      cursor: "pointer",
                     }}
                     onClick={() => setMetric("photos")}
                   >
@@ -2339,15 +3330,25 @@ function ProfileDashboard({
               </div>
             </div>
 
-            <div className="filter-bar" style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "10px",
-              alignItems: "center",
-              padding: "8px 0",
-              borderTop: "1px solid var(--line-soft)"
-            }}>
-              <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "var(--muted)", marginRight: "8px" }}>
+            <div
+              className="filter-bar"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "10px",
+                alignItems: "center",
+                padding: "8px 0",
+                borderTop: "1px solid var(--line-soft)",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: "600",
+                  color: "var(--muted)",
+                  marginRight: "8px",
+                }}
+              >
                 {language === "es" ? "Filtrar gráfico:" : "Filter chart:"}
               </span>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
@@ -2375,8 +3376,8 @@ function ProfileDashboard({
                 >
                   YTD
                 </button>
-                
-                {availableYears.map(year => (
+
+                {availableYears.map((year) => (
                   <button
                     key={year}
                     className={`filter-pill ${filterType === "year" && selectedYear === year ? "active" : ""}`}
@@ -2388,7 +3389,7 @@ function ProfileDashboard({
                     {year}
                   </button>
                 ))}
-                
+
                 <button
                   className={`filter-pill ${filterType === "custom" ? "active" : ""}`}
                   onClick={() => setFilterType("custom")}
@@ -2397,50 +3398,157 @@ function ProfileDashboard({
                 </button>
               </div>
 
-              {filterType === "custom" && (
-                <div className="custom-range-inputs" style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginLeft: "auto",
-                  background: "var(--paper-2)",
-                  padding: "4px 12px",
-                  borderRadius: "999px",
-                  border: "1px solid var(--line)"
-                }}>
-                  <input
-                    type="date"
-                    value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--ink)",
-                      fontSize: "0.85rem",
-                      outline: "none"
-                    }}
-                  />
-                  <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{language === "es" ? "a" : "to"}</span>
-                  <input
-                    type="date"
-                    value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--ink)",
-                      fontSize: "0.85rem",
-                      outline: "none"
-                    }}
-                  />
+              {(isLargeRange || filterType === "custom") && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginLeft: "auto",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {isLargeRange && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.85rem",
+                          fontWeight: "600",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {language === "es" ? "Agrupación:" : "Grouping:"}
+                      </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "4px",
+                          background: "var(--paper-2)",
+                          padding: "4px",
+                          borderRadius: "999px",
+                          border: "1px solid var(--line)",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className={`filter-pill ${resolvedGrouping === "weekly" ? "active" : ""}`}
+                          style={{
+                            height: "28px",
+                            padding: "0 12px",
+                            border: "none",
+                            borderRadius: "999px",
+                            background:
+                              resolvedGrouping === "weekly"
+                                ? "var(--ink)"
+                                : "transparent",
+                            color:
+                              resolvedGrouping === "weekly"
+                                ? "var(--white)"
+                                : "var(--ink)",
+                            fontSize: "0.78rem",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                          }}
+                          onClick={() => setChartGrouping("weekly")}
+                        >
+                          {language === "es" ? "Semanal" : "Weekly"}
+                        </button>
+                        <button
+                          type="button"
+                          className={`filter-pill ${resolvedGrouping === "monthly" ? "active" : ""}`}
+                          style={{
+                            height: "28px",
+                            padding: "0 12px",
+                            border: "none",
+                            borderRadius: "999px",
+                            background:
+                              resolvedGrouping === "monthly"
+                                ? "var(--ink)"
+                                : "transparent",
+                            color:
+                              resolvedGrouping === "monthly"
+                                ? "var(--white)"
+                                : "var(--ink)",
+                            fontSize: "0.78rem",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                          }}
+                          onClick={() => setChartGrouping("monthly")}
+                        >
+                          {language === "es" ? "Mensual" : "Monthly"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {filterType === "custom" && (
+                    <div
+                      className="custom-range-inputs"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        background: "var(--paper-2)",
+                        padding: "4px 12px",
+                        borderRadius: "999px",
+                        border: "1px solid var(--line)",
+                      }}
+                    >
+                      <input
+                        type="date"
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--ink)",
+                          fontSize: "0.85rem",
+                          outline: "none",
+                        }}
+                      />
+                      <span
+                        style={{ fontSize: "0.85rem", color: "var(--muted)" }}
+                      >
+                        {language === "es" ? "a" : "to"}
+                      </span>
+                      <input
+                        type="date"
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--ink)",
+                          fontSize: "0.85rem",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </header>
           <div className="chart-wrap">
             {trendData.length === 0 ? (
-              <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--muted)", fontSize: "0.9rem" }}>
-                {language === "es" ? "Sin ventas en el rango seleccionado" : "No sales in selected range"}
+              <div
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  height: "100%",
+                  color: "var(--muted)",
+                  fontSize: "0.9rem",
+                }}
+              >
+                {language === "es"
+                  ? "Sin ventas en el rango seleccionado"
+                  : "No sales in selected range"}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -2450,10 +3558,16 @@ function ProfileDashboard({
                   <YAxis
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(value) => (metric === "revenue" ? `$${value}` : String(value))}
+                    tickFormatter={(value) =>
+                      metric === "revenue" ? `$${value}` : String(value)
+                    }
                   />
                   <Tooltip
-                    formatter={(value) => (metric === "revenue" ? money.format(Number(value)) : `${value} ${language === "es" ? "fotos" : "photos"}`)}
+                    formatter={(value) =>
+                      metric === "revenue"
+                        ? money.format(Number(value))
+                        : `${value} ${language === "es" ? "fotos" : "photos"}`
+                    }
                   />
                   <Area
                     type="monotone"
@@ -2484,7 +3598,9 @@ function ProfileDashboard({
                   <span>{money.format(activity.revenue)}</span>
                 </header>
                 <div className="meter" aria-label={`${activity.share}%`}>
-                  <span style={{ width: `${Math.min(activity.share, 100)}%` }} />
+                  <span
+                    style={{ width: `${Math.min(activity.share, 100)}%` }}
+                  />
                 </div>
               </div>
             ))}
@@ -2502,8 +3618,12 @@ function ProfileDashboard({
         </header>
         <div className="album-grid">
           {summary.albums.slice(0, 6).map((album) => {
-            const albumSales = summary.sales.filter(s => isAlbumMatch(s.album, album.title));
-            const netRevenue = album.netRevenue || albumSales.reduce((sum, s) => sum + s.total, 0);
+            const albumSales = summary.sales.filter((s) =>
+              isAlbumMatch(s.album, album.title),
+            );
+            const netRevenue =
+              album.netRevenue ||
+              albumSales.reduce((sum, s) => sum + s.total, 0);
             return (
               <article className="album-card" key={album.id}>
                 <header>
@@ -2516,18 +3636,50 @@ function ProfileDashboard({
                 <h3>{album.title}</h3>
                 <div className="album-meta">
                   <div>
-                    <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
                       {t.tableGross}
-                      <span className="instant-tooltip" data-tooltip={t.grossRevenueHelp} style={{ cursor: "help", color: "var(--muted)", opacity: 0.8, display: "inline-flex", alignItems: "center" }}>
+                      <span
+                        className="instant-tooltip"
+                        data-tooltip={t.grossRevenueHelp}
+                        style={{
+                          cursor: "help",
+                          color: "var(--muted)",
+                          opacity: 0.8,
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
                         <HelpCircle size={12} />
                       </span>
                     </span>
                     <strong>{money.format(album.revenue)}</strong>
                   </div>
                   <div>
-                    <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
                       {t.tableNet}
-                      <span className="instant-tooltip" data-tooltip={t.netRevenueHelp} style={{ cursor: "help", color: "var(--muted)", opacity: 0.8, display: "inline-flex", alignItems: "center" }}>
+                      <span
+                        className="instant-tooltip"
+                        data-tooltip={t.netRevenueHelp}
+                        style={{
+                          cursor: "help",
+                          color: "var(--muted)",
+                          opacity: 0.8,
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
                         <HelpCircle size={12} />
                       </span>
                     </span>
@@ -2539,14 +3691,20 @@ function ProfileDashboard({
                   </div>
                   <div>
                     <span>{t.ticket}</span>
-                    <strong>{money.format(album.sales > 0 ? album.revenue / album.sales : 0)}</strong>
+                    <strong>
+                      {money.format(
+                        album.sales > 0 ? album.revenue / album.sales : 0,
+                      )}
+                    </strong>
                   </div>
                   <div>
                     <span>{language === "es" ? "Fotos" : "Photos"}</span>
                     <strong>{album.soldPhotos}</strong>
                   </div>
                   <div>
-                    <span>{language === "es" ? "Publicadas" : "Published"}</span>
+                    <span>
+                      {language === "es" ? "Publicadas" : "Published"}
+                    </span>
                     <strong>{album.photos}</strong>
                   </div>
                   <div>
@@ -2585,13 +3743,19 @@ function ProfileDashboard({
                     fontSize: "0.82rem",
                     fontWeight: "600",
                     cursor: "pointer",
-                    outline: "none"
+                    outline: "none",
                   }}
-                  aria-label={language === "es" ? "Filtrar ventas por evento" : "Filter sales by event"}
+                  aria-label={
+                    language === "es"
+                      ? "Filtrar ventas por evento"
+                      : "Filter sales by event"
+                  }
                 >
                   <option value="all">{t.allEvents}</option>
-                  {uniqueAlbums.map(album => (
-                    <option key={album} value={album}>{album}</option>
+                  {uniqueAlbums.map((album) => (
+                    <option key={album} value={album}>
+                      {album}
+                    </option>
                   ))}
                 </select>
               )}
@@ -2617,11 +3781,21 @@ function ProfileDashboard({
                 {paginatedSales.map((sale) => (
                   <tr key={sale.id}>
                     <td data-label={t.tableSale}>
-                      <button className="sale-button" onClick={() => onSelectSale(sale.id)}>
+                      <button
+                        className="sale-button"
+                        onClick={() => onSelectSale(sale.id)}
+                      >
                         <strong>
                           {sale.buyer}
                           {sale.buyerEmail ? (
-                            <span title={sale.buyerEmail} style={{ display: "inline-block", verticalAlign: "middle", marginLeft: "6px" }}>
+                            <span
+                              title={sale.buyerEmail}
+                              style={{
+                                display: "inline-block",
+                                verticalAlign: "middle",
+                                marginLeft: "6px",
+                              }}
+                            >
                               <Mail size={14} />
                             </span>
                           ) : null}
@@ -2633,10 +3807,18 @@ function ProfileDashboard({
                     <td data-label={t.tablePhotos}>
                       <SaleThumbnails sale={sale} />
                     </td>
-                    <td data-label={t.tableSubtotal}>{money.format(sale.subtotal)}</td>
-                    <td data-label={t.tableDiscount}>-{money.format(sale.discount)}</td>
-                    <td data-label={t.tableGross}>{money.format(sale.grossTotal)}</td>
-                    <td data-label={t.tableService}>-{money.format(sale.fees)}</td>
+                    <td data-label={t.tableSubtotal}>
+                      {money.format(sale.subtotal)}
+                    </td>
+                    <td data-label={t.tableDiscount}>
+                      -{money.format(sale.discount)}
+                    </td>
+                    <td data-label={t.tableGross}>
+                      {money.format(sale.grossTotal)}
+                    </td>
+                    <td data-label={t.tableService}>
+                      -{money.format(sale.fees)}
+                    </td>
                     <td data-label={t.tableNet}>{money.format(sale.total)}</td>
                     <td data-label={t.tableStatus}>
                       <span className="status-pill">
@@ -2648,8 +3830,17 @@ function ProfileDashboard({
                 ))}
                 {filteredSales.length === 0 && (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: "center", color: "var(--muted)", padding: "30px 10px" }}>
-                      {language === "es" ? "No hay ventas registradas para este evento." : "No sales registered for this event."}
+                    <td
+                      colSpan={9}
+                      style={{
+                        textAlign: "center",
+                        color: "var(--muted)",
+                        padding: "30px 10px",
+                      }}
+                    >
+                      {language === "es"
+                        ? "No hay ventas registradas para este evento."
+                        : "No sales registered for this event."}
                     </td>
                   </tr>
                 )}
@@ -2659,19 +3850,31 @@ function ProfileDashboard({
 
           {/* Pagination Controls */}
           {filteredSales.length > 0 && (
-            <div style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "16px 0 0 0",
-              borderTop: "1px solid var(--line)",
-              marginTop: "16px",
-              flexWrap: "wrap",
-              gap: "12px"
-            }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "16px 0 0 0",
+                borderTop: "1px solid var(--line)",
+                marginTop: "16px",
+                flexWrap: "wrap",
+                gap: "12px",
+              }}
+            >
               {/* Rows per page selector */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.82rem", color: "var(--muted)" }}>
-                <span>{language === "es" ? "Filas por página:" : "Rows per page:"}</span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "0.82rem",
+                  color: "var(--muted)",
+                }}
+              >
+                <span>
+                  {language === "es" ? "Filas por página:" : "Rows per page:"}
+                </span>
                 <select
                   value={pageSize}
                   onChange={(e) => {
@@ -2688,7 +3891,7 @@ function ProfileDashboard({
                     fontSize: "0.82rem",
                     fontWeight: "600",
                     cursor: "pointer",
-                    outline: "none"
+                    outline: "none",
                   }}
                 >
                   <option value={25}>25</option>
@@ -2698,17 +3901,27 @@ function ProfileDashboard({
               </div>
 
               {/* Page navigation */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <span style={{ fontSize: "0.82rem", color: "var(--muted)", fontWeight: "500" }}>
-                  {language === "es" 
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "12px" }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.82rem",
+                    color: "var(--muted)",
+                    fontWeight: "500",
+                  }}
+                >
+                  {language === "es"
                     ? `Mostrando ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredSales.length)} de ${filteredSales.length}`
                     : `Showing ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredSales.length)} of ${filteredSales.length}`}
                 </span>
-                
+
                 <div style={{ display: "flex", gap: "6px" }}>
                   <button
                     className="icon-button"
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
                     disabled={currentPage === 1}
                     style={{
                       width: "32px",
@@ -2722,9 +3935,11 @@ function ProfileDashboard({
                       justifyContent: "center",
                       cursor: currentPage === 1 ? "not-allowed" : "pointer",
                       opacity: currentPage === 1 ? 0.4 : 1,
-                      padding: 0
+                      padding: 0,
                     }}
-                    title={language === "es" ? "Página anterior" : "Previous page"}
+                    title={
+                      language === "es" ? "Página anterior" : "Previous page"
+                    }
                   >
                     <ChevronLeft size={16} />
                   </button>
@@ -2732,16 +3947,50 @@ function ProfileDashboard({
                   {/* Page numbers */}
                   {Array.from({ length: totalPages }).map((_, index) => {
                     const pageNum = index + 1;
-                    if (totalPages > 5 && pageNum !== 1 && pageNum !== totalPages && Math.abs(pageNum - currentPage) > 1) {
+                    if (
+                      totalPages > 5 &&
+                      pageNum !== 1 &&
+                      pageNum !== totalPages &&
+                      Math.abs(pageNum - currentPage) > 1
+                    ) {
                       if (pageNum === 2 && currentPage > 3) {
-                        return <span key="ellipsis-start" style={{ display: "inline-flex", alignItems: "center", padding: "0 4px", color: "var(--muted)", fontSize: "0.82rem" }}>...</span>;
+                        return (
+                          <span
+                            key="ellipsis-start"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "0 4px",
+                              color: "var(--muted)",
+                              fontSize: "0.82rem",
+                            }}
+                          >
+                            ...
+                          </span>
+                        );
                       }
-                      if (pageNum === totalPages - 1 && currentPage < totalPages - 2) {
-                        return <span key="ellipsis-end" style={{ display: "inline-flex", alignItems: "center", padding: "0 4px", color: "var(--muted)", fontSize: "0.82rem" }}>...</span>;
+                      if (
+                        pageNum === totalPages - 1 &&
+                        currentPage < totalPages - 2
+                      ) {
+                        return (
+                          <span
+                            key="ellipsis-end"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "0 4px",
+                              color: "var(--muted)",
+                              fontSize: "0.82rem",
+                            }}
+                          >
+                            ...
+                          </span>
+                        );
                       }
                       return null;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
@@ -2751,16 +4000,25 @@ function ProfileDashboard({
                           height: "32px",
                           minHeight: "32px",
                           borderRadius: "6px",
-                          border: currentPage === pageNum ? "1px solid var(--ink)" : "1px solid var(--line)",
-                          background: currentPage === pageNum ? "var(--ink)" : "var(--white)",
-                          color: currentPage === pageNum ? "var(--white)" : "var(--ink)",
+                          border:
+                            currentPage === pageNum
+                              ? "1px solid var(--ink)"
+                              : "1px solid var(--line)",
+                          background:
+                            currentPage === pageNum
+                              ? "var(--ink)"
+                              : "var(--white)",
+                          color:
+                            currentPage === pageNum
+                              ? "var(--white)"
+                              : "var(--ink)",
                           fontSize: "0.82rem",
                           fontWeight: "600",
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          padding: 0
+                          padding: 0,
                         }}
                       >
                         {pageNum}
@@ -2770,7 +4028,9 @@ function ProfileDashboard({
 
                   <button
                     className="icon-button"
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
                     disabled={currentPage === totalPages}
                     style={{
                       width: "32px",
@@ -2782,9 +4042,10 @@ function ProfileDashboard({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                      cursor:
+                        currentPage === totalPages ? "not-allowed" : "pointer",
                       opacity: currentPage === totalPages ? 0.4 : 1,
-                      padding: 0
+                      padding: 0,
                     }}
                     title={language === "es" ? "Página siguiente" : "Next page"}
                   >
@@ -2798,9 +4059,11 @@ function ProfileDashboard({
 
         <aside className="sale-detail">
           <div className="detail-plate">
-            <strong>{selectedSale ? money.format(selectedSale.total) : "$0"}</strong>
+            <strong>
+              {selectedSale ? money.format(selectedSale.total) : "$0"}
+            </strong>
           </div>
-          <DetailPhotoStrip 
+          <DetailPhotoStrip
             sale={selectedSale}
             profileId={summary.id}
             profileName={summary.label}
@@ -2809,14 +4072,22 @@ function ProfileDashboard({
           />
           <header className="panel-header">
             <div>
-              <h2>{selectedSale?.buyer ?? (language === "es" ? "Venta" : "Sale")}</h2>
-              <p>{selectedSale?.buyerEmail || selectedSale?.album || (language === "es" ? "Sin email" : "No email")}</p>
+              <h2>
+                {selectedSale?.buyer ?? (language === "es" ? "Venta" : "Sale")}
+              </h2>
+              <p>
+                {selectedSale?.buyerEmail ||
+                  selectedSale?.album ||
+                  (language === "es" ? "Sin email" : "No email")}
+              </p>
             </div>
             <Camera size={21} />
           </header>
           <div className="detail-list">
             <div>
-              <span>{language === "es" ? "Email comprador" : "Buyer Email"}</span>
+              <span>
+                {language === "es" ? "Email comprador" : "Buyer Email"}
+              </span>
               <strong>{selectedSale?.buyerEmail || "-"}</strong>
             </div>
             <div>
@@ -2829,39 +4100,79 @@ function ProfileDashboard({
             </div>
             <div>
               <span>{t.subtotal}</span>
-              <strong>{selectedSale ? money.format(selectedSale.subtotal) : "-"}</strong>
+              <strong>
+                {selectedSale ? money.format(selectedSale.subtotal) : "-"}
+              </strong>
             </div>
             <div>
               <span>{t.discounts}</span>
-              <strong>{selectedSale ? `-${money.format(selectedSale.discount)}` : "-"}</strong>
+              <strong>
+                {selectedSale ? `-${money.format(selectedSale.discount)}` : "-"}
+              </strong>
             </div>
             <div>
               <span>{t.tableGross}</span>
-              <strong>{selectedSale ? money.format(selectedSale.grossTotal) : "-"}</strong>
+              <strong>
+                {selectedSale ? money.format(selectedSale.grossTotal) : "-"}
+              </strong>
             </div>
             <div>
               <span>{t.tableService}</span>
-              <strong>{selectedSale ? `-${money.format(selectedSale.fees)}` : "-"}</strong>
+              <strong>
+                {selectedSale ? `-${money.format(selectedSale.fees)}` : "-"}
+              </strong>
             </div>
-            {selectedSale && selectedSale.stripeFee !== undefined && selectedSale.stripeFee > 0 && (
-              <>
-                <div style={{ paddingLeft: "16px", fontSize: "0.8rem", color: "var(--muted)", borderBottom: "none", paddingTop: "4px", paddingBottom: "4px" }}>
-                  <span>{language === "es" ? "└ Comisión de Stripe" : "└ Stripe Fee"}</span>
-                  <strong>{`-${money.format(selectedSale.stripeFee)}`}</strong>
-                </div>
-                <div style={{ paddingLeft: "16px", fontSize: "0.8rem", color: "var(--muted)", borderBottom: "none", paddingTop: "4px", paddingBottom: "4px" }}>
-                  <span>{language === "es" ? "└ Comisión de Lumepic" : "└ Lumepic Fee"}</span>
-                  <strong>{`-${money.format(Math.max(selectedSale.fees - selectedSale.stripeFee, 0))}`}</strong>
-                </div>
-              </>
-            )}
+            {selectedSale &&
+              selectedSale.stripeFee !== undefined &&
+              selectedSale.stripeFee > 0 && (
+                <>
+                  <div
+                    style={{
+                      paddingLeft: "16px",
+                      fontSize: "0.8rem",
+                      color: "var(--muted)",
+                      borderBottom: "none",
+                      paddingTop: "4px",
+                      paddingBottom: "4px",
+                    }}
+                  >
+                    <span>
+                      {language === "es"
+                        ? "└ Comisión de Stripe"
+                        : "└ Stripe Fee"}
+                    </span>
+                    <strong>{`-${money.format(selectedSale.stripeFee)}`}</strong>
+                  </div>
+                  <div
+                    style={{
+                      paddingLeft: "16px",
+                      fontSize: "0.8rem",
+                      color: "var(--muted)",
+                      borderBottom: "none",
+                      paddingTop: "4px",
+                      paddingBottom: "4px",
+                    }}
+                  >
+                    <span>
+                      {language === "es"
+                        ? "└ Comisión de Lumepic"
+                        : "└ Lumepic Fee"}
+                    </span>
+                    <strong>{`-${money.format(Math.max(selectedSale.fees - selectedSale.stripeFee, 0))}`}</strong>
+                  </div>
+                </>
+              )}
             <div>
               <span>{t.net}</span>
-              <strong>{selectedSale ? money.format(selectedSale.total) : "-"}</strong>
+              <strong>
+                {selectedSale ? money.format(selectedSale.total) : "-"}
+              </strong>
             </div>
             <div>
               <span>{t.date}</span>
-              <strong>{selectedSale ? formatDate(selectedSale.date, language) : "-"}</strong>
+              <strong>
+                {selectedSale ? formatDate(selectedSale.date, language) : "-"}
+              </strong>
             </div>
             <div>
               <span>{t.status}</span>
@@ -2875,7 +4186,11 @@ function ProfileDashboard({
         <header className="panel-header">
           <div>
             <h2>{language === "es" ? "Mix de actividad" : "Activity Mix"}</h2>
-            <p>{language === "es" ? "Comparación rápida por cantidad de ventas." : "Quick comparison by sales count."}</p>
+            <p>
+              {language === "es"
+                ? "Comparación rápida por cantidad de ventas."
+                : "Quick comparison by sales count."}
+            </p>
           </div>
           <Activity size={21} />
         </header>
@@ -2960,14 +4275,18 @@ function WatcherDashboard({
   const t = TRANSLATIONS[language];
   const [config, setConfig] = useState<WatcherConfig | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [albums, setAlbums] = useState<Array<{ id: string; title: string; photosCount: number; eventId?: string }>>([]);
+  const [albums, setAlbums] = useState<
+    Array<{ id: string; title: string; photosCount: number; eventId?: string }>
+  >([]);
   const [allAlbums, setAllAlbums] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [creatingAlbumId, setCreatingAlbumId] = useState<string | null>(null);
-  const [deletingPhotographId, setDeletingPhotographId] = useState<string | null>(null);
+  const [deletingPhotographId, setDeletingPhotographId] = useState<
+    string | null
+  >(null);
   const [selectingFolder, setSelectingFolder] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
 
@@ -2979,12 +4298,14 @@ function WatcherDashboard({
 
   const loadStatus = async (statusOnly: boolean = false) => {
     try {
-      const res = await fetch(`/api/lumepic/watcher${statusOnly ? "?statusOnly=true" : ""}`);
+      const res = await fetch(
+        `/api/lumepic/watcher${statusOnly ? "?statusOnly=true" : ""}`,
+      );
       if (res.ok) {
         const data = await res.json();
         setConfig(data.config);
         setHistory(data.history || []);
-        
+
         if (!statusOnly || (data.albums && data.albums.length > 0)) {
           setAlbums(data.albums || []);
         }
@@ -2995,7 +4316,7 @@ function WatcherDashboard({
           setEvents(data.events || []);
         }
         setIsRunning(data.isRunning);
-        
+
         if (data.config) {
           setWatchFolderPath(data.config.watchFolderPath);
           setTargetAlbumId(data.config.targetAlbumId || "");
@@ -3064,7 +4385,9 @@ function WatcherDashboard({
       if (data.allAlbums) setAllAlbums(data.allAlbums);
       setEvents(data.events || []);
       setIsRunning(data.isRunning);
-      setWatchFolderPath(data.config?.watchFolderPath || data.selectedPath || "");
+      setWatchFolderPath(
+        data.config?.watchFolderPath || data.selectedPath || "",
+      );
     } catch (e) {
       console.error("Error selecting watcher folder:", e);
       alert("No pude seleccionar la carpeta local");
@@ -3128,7 +4451,9 @@ function WatcherDashboard({
   const handleDeletePhotograph = async (item: HistoryItem) => {
     const photographId = item.uploadedPhotographId || item.id;
     if (!photographId || item.status !== "success") return;
-    const confirmed = window.confirm(`Borrar la foto ${item.filename} de Lumepic?\n\nID: ${photographId}\n\nEsto no borra el álbum.`);
+    const confirmed = window.confirm(
+      `Borrar la foto ${item.filename} de Lumepic?\n\nID: ${photographId}\n\nEsto no borra el álbum.`,
+    );
     if (!confirmed) return;
 
     setDeletingPhotographId(photographId);
@@ -3172,7 +4497,11 @@ function WatcherDashboard({
     return (
       <div style={{ padding: 60, textAlign: "center", color: "var(--muted)" }}>
         <RefreshCw size={24} className="spin" style={{ marginBottom: 12 }} />
-        <p>{language === "es" ? "Cargando configuración de la Carpeta Watcher..." : "Loading Watch Folder Configuration..."}</p>
+        <p>
+          {language === "es"
+            ? "Cargando configuración de la Carpeta Watcher..."
+            : "Loading Watch Folder Configuration..."}
+        </p>
       </div>
     );
   }
@@ -3186,7 +4515,8 @@ function WatcherDashboard({
   };
 
   const formatDuration = (durationMs?: number) => {
-    if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return language === "es" ? "Sin medir" : "Not measured";
+    if (typeof durationMs !== "number" || !Number.isFinite(durationMs))
+      return language === "es" ? "Sin medir" : "Not measured";
     if (durationMs < 1000) return `${durationMs} ms`;
     const seconds = durationMs / 1000;
     if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 0 : 1)} s`;
@@ -3197,7 +4527,9 @@ function WatcherDashboard({
 
   const formatRetryTime = (value?: string | null) => {
     if (!value) return null;
-    return new Date(value).toLocaleString(language === "es" ? "es-AR" : "en-US");
+    return new Date(value).toLocaleString(
+      language === "es" ? "es-AR" : "en-US",
+    );
   };
 
   const activeProf = profiles.find((p) => p.id === profileId) || profiles[0];
@@ -3207,7 +4539,9 @@ function WatcherDashboard({
     photosCount: album.photos || 0,
   }));
   const albumOptions = albums.length > 0 ? albums : fallbackAlbums;
-  const selectedAlbum = albumOptions.find((album) => album.id === targetAlbumId);
+  const selectedAlbum = albumOptions.find(
+    (album) => album.id === targetAlbumId,
+  );
   const hasTargetAlbum = Boolean(targetAlbumId && selectedAlbum);
   const normalizedHistorySearch = historySearch.trim().toLowerCase();
   const filteredHistory = normalizedHistorySearch
@@ -3220,13 +4554,17 @@ function WatcherDashboard({
           item.uploadedPhotographId || item.id,
           item.deletedPhotographId || "",
         ];
-        return fields.some((field) => field.toLowerCase().includes(normalizedHistorySearch));
+        return fields.some((field) =>
+          field.toLowerCase().includes(normalizedHistorySearch),
+        );
       })
     : history;
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         @keyframes pulse-green {
           0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
           70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
@@ -3246,14 +4584,32 @@ function WatcherDashboard({
         @keyframes spin {
           100% { transform: rotate(360deg); }
         }
-      ` }} />
+      `,
+        }}
+      />
 
       <section className="kpi-grid" aria-label="Watcher status metrics">
         <article className="kpi-card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+            }}
+          >
             <div>
-              <p className="eyebrow" style={{ color: "var(--muted)" }}>{t.watcherStatus}</p>
-              <h2 style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0" }}>
+              <p className="eyebrow" style={{ color: "var(--muted)" }}>
+                {t.watcherStatus}
+              </p>
+              <h2
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  margin: "8px 0",
+                }}
+              >
                 {isRunning ? (
                   <>
                     <span className="pulse-dot" />
@@ -3261,18 +4617,26 @@ function WatcherDashboard({
                   </>
                 ) : (
                   <>
-                    <span style={{
-                      display: "inline-block",
-                      width: 12,
-                      height: 12,
-                      background: "#ef4444",
-                      borderRadius: "50%"
-                    }} />
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 12,
+                        height: 12,
+                        background: "#ef4444",
+                        borderRadius: "50%",
+                      }}
+                    />
                     <span>{t.inactive}</span>
                   </>
                 )}
               </h2>
-              <p style={{ fontSize: "0.85rem", color: "var(--muted)", margin: 0 }}>
+              <p
+                style={{
+                  fontSize: "0.85rem",
+                  color: "var(--muted)",
+                  margin: 0,
+                }}
+              >
                 {isRunning ? t.watcherActiveDesc : t.watcherInactiveDesc}
               </p>
             </div>
@@ -3281,38 +4645,82 @@ function WatcherDashboard({
         </article>
 
         <article className="kpi-card">
-          <p className="eyebrow" style={{ color: "var(--muted)" }}>{t.processedUploads}</p>
+          <p className="eyebrow" style={{ color: "var(--muted)" }}>
+            {t.processedUploads}
+          </p>
           <h2 style={{ margin: "8px 0" }}>{history.length}</h2>
           <p style={{ fontSize: "0.85rem", color: "var(--muted)", margin: 0 }}>
-            {history.filter(h => h.status === "success").length} {language === "es" ? "exitosas" : "successful"} | {history.filter(h => h.status === "failed").length} {language === "es" ? "fallidas" : "failed"}
+            {history.filter((h) => h.status === "success").length}{" "}
+            {language === "es" ? "exitosas" : "successful"} |{" "}
+            {history.filter((h) => h.status === "failed").length}{" "}
+            {language === "es" ? "fallidas" : "failed"}
           </p>
         </article>
 
         <article className="kpi-card">
-          <p className="eyebrow" style={{ color: "var(--muted)" }}>{t.targetAlbum}</p>
-          <h2 style={{ margin: "8px 0", fontSize: "1.4rem", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={selectedAlbum?.title || (language === "es" ? "Ninguno" : "None")}>
+          <p className="eyebrow" style={{ color: "var(--muted)" }}>
+            {t.targetAlbum}
+          </p>
+          <h2
+            style={{
+              margin: "8px 0",
+              fontSize: "1.4rem",
+              textOverflow: "ellipsis",
+              overflow: "hidden",
+              whiteSpace: "nowrap",
+            }}
+            title={
+              selectedAlbum?.title || (language === "es" ? "Ninguno" : "None")
+            }
+          >
             {selectedAlbum?.title || t.selectAlbumPrompt}
           </h2>
           <p style={{ fontSize: "0.85rem", color: "var(--muted)", margin: 0 }}>
-            {language === "es" ? "Cuenta" : "Account"}: {activeProf?.profile?.name || t.noProfiles}
+            {language === "es" ? "Cuenta" : "Account"}:{" "}
+            {activeProf?.profile?.name || t.noProfiles}
           </p>
         </article>
       </section>
 
-      <section className="analysis-grid" style={{ marginTop: "24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+      <section
+        className="analysis-grid"
+        style={{
+          marginTop: "24px",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "24px",
+        }}
+      >
         <article className="panel">
           <header className="panel-header">
             <h3>{t.watcherFolderConfig}</h3>
           </header>
-          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t.localFolderPath}</label>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div
+            style={{
+              padding: "20px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+          >
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+            >
+              <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                {t.localFolderPath}
+              </label>
+              <div
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+              >
                 <input
                   type="text"
                   value={watchFolderPath}
                   readOnly
-                  placeholder={language === "es" ? "/Users/nombre/LumepicWatchFolder" : "/Users/name/LumepicWatchFolder"}
+                  placeholder={
+                    language === "es"
+                      ? "/Users/nombre/LumepicWatchFolder"
+                      : "/Users/name/LumepicWatchFolder"
+                  }
                   style={{
                     padding: "10px",
                     borderRadius: "6px",
@@ -3332,16 +4740,31 @@ function WatcherDashboard({
                   type="button"
                 >
                   <FolderOpen size={15} />
-                  {selectingFolder ? (language === "es" ? "Abriendo..." : "Opening...") : t.selectLocalFolder}
+                  {selectingFolder
+                    ? language === "es"
+                      ? "Abriendo..."
+                      : "Opening..."
+                    : t.selectLocalFolder}
                 </button>
               </div>
               <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                {language === "es" ? "Ruta absoluta donde copiarás las fotos. Usa el selector para cambiarla." : "Absolute path where you will copy the photos. Use the selector to change it."}
+                {language === "es"
+                  ? "Ruta absoluta donde copiarás las fotos. Usa el selector para cambiarla."
+                  : "Absolute path where you will copy the photos. Use the selector to change it."}
               </span>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxWidth: "240px" }}>
-              <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t.uploadConcurrency}</label>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+                maxWidth: "240px",
+              }}
+            >
+              <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                {t.uploadConcurrency}
+              </label>
               <input
                 type="number"
                 min={1}
@@ -3350,7 +4773,10 @@ function WatcherDashboard({
                 value={uploadConcurrency}
                 onChange={(e) => setUploadConcurrency(Number(e.target.value))}
                 onBlur={() => {
-                  const normalizedValue = Math.min(10, Math.max(1, Math.floor(Number(uploadConcurrency) || 1)));
+                  const normalizedValue = Math.min(
+                    10,
+                    Math.max(1, Math.floor(Number(uploadConcurrency) || 1)),
+                  );
                   setUploadConcurrency(normalizedValue);
                   handleSaveConfig({ uploadConcurrency: normalizedValue });
                 }}
@@ -3364,19 +4790,35 @@ function WatcherDashboard({
                 }}
               />
               <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                {language === "es" ? "Por defecto 1. Máximo 10 para evitar límites de tasa." : "Default 1. Maximum 10 to avoid rate limits."}
+                {language === "es"
+                  ? "Por defecto 1. Máximo 10 para evitar límites de tasa."
+                  : "Default 1. Maximum 10 to avoid rate limits."}
               </span>
             </div>
 
             <div style={{ display: "flex", gap: "16px" }}>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>{language === "es" ? "Cuenta de Fotógrafo" : "Photographer Account"}</label>
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px",
+                }}
+              >
+                <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                  {language === "es"
+                    ? "Cuenta de Fotógrafo"
+                    : "Photographer Account"}
+                </label>
                 <select
                   value={profileId}
                   onChange={(e) => {
                     setProfileId(e.target.value);
                     setTargetAlbumId("");
-                    handleSaveConfig({ profileId: e.target.value, targetAlbumId: "" });
+                    handleSaveConfig({
+                      profileId: e.target.value,
+                      targetAlbumId: "",
+                    });
                   }}
                   style={{
                     padding: "10px",
@@ -3395,8 +4837,17 @@ function WatcherDashboard({
                 </select>
               </div>
 
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t.albumDestination}</label>
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px",
+                }}
+              >
+                <label style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                  {t.albumDestination}
+                </label>
                 <select
                   value={targetAlbumId}
                   onChange={(e) => {
@@ -3415,25 +4866,45 @@ function WatcherDashboard({
                   <option value="">{t.selectAlbumPrompt}...</option>
                   {albumOptions.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.title} ({a.photosCount} {language === "es" ? "fotos" : "photos"})
+                      {a.title} ({a.photosCount}{" "}
+                      {language === "es" ? "fotos" : "photos"})
                     </option>
                   ))}
                 </select>
                 {!hasTargetAlbum ? (
                   <span style={{ fontSize: "0.78rem", color: "#c5221f" }}>
-                    {language === "es" ? "Selecciona un álbum de destino para poder activar el watcher." : "Select a target album to activate the watcher."}
+                    {language === "es"
+                      ? "Selecciona un álbum de destino para poder activar el watcher."
+                      : "Select a target album to activate the watcher."}
                   </span>
                 ) : null}
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--line)" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "12px",
+                paddingTop: "12px",
+                borderTop: "1px solid var(--line)",
+              }}
+            >
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
                   className="text-button primary"
-                  onClick={() => handleSaveConfig({ targetAlbumId, profileId, uploadConcurrency })}
+                  onClick={() =>
+                    handleSaveConfig({
+                      targetAlbumId,
+                      profileId,
+                      uploadConcurrency,
+                    })
+                  }
                 >
-                  {language === "es" ? "Guardar Configuración" : "Save Settings"}
+                  {language === "es"
+                    ? "Guardar Configuración"
+                    : "Save Settings"}
                 </button>
                 <button
                   className="text-button"
@@ -3442,7 +4913,13 @@ function WatcherDashboard({
                   style={{ display: "flex", alignItems: "center", gap: "6px" }}
                 >
                   <RefreshCw size={14} className={scanning ? "spin" : ""} />
-                  {scanning ? (language === "es" ? "Escaneando..." : "Scanning...") : (language === "es" ? "Escanear Ahora" : "Scan Now")}
+                  {scanning
+                    ? language === "es"
+                      ? "Escaneando..."
+                      : "Scanning..."
+                    : language === "es"
+                      ? "Escanear Ahora"
+                      : "Scan Now"}
                 </button>
               </div>
 
@@ -3450,20 +4927,34 @@ function WatcherDashboard({
                 className="text-button"
                 onClick={() => {
                   if (!isRunning && !hasTargetAlbum) {
-                    alert(language === "es" ? "Selecciona un álbum destino antes de activar el watcher." : "Select a target album before activating the watcher.");
+                    alert(
+                      language === "es"
+                        ? "Selecciona un álbum destino antes de activar el watcher."
+                        : "Select a target album before activating the watcher.",
+                    );
                     return;
                   }
                   handleSaveConfig({ isActive: !isRunning });
                 }}
                 disabled={!isRunning && !hasTargetAlbum}
                 style={{
-                  background: isRunning ? "#ef4444" : hasTargetAlbum ? "#22c55e" : "var(--line)",
+                  background: isRunning
+                    ? "#ef4444"
+                    : hasTargetAlbum
+                      ? "#22c55e"
+                      : "var(--line)",
                   color: "#fff",
                   border: "none",
                   fontWeight: 600,
                 }}
               >
-                {isRunning ? (language === "es" ? "Detener" : "Stop") : (language === "es" ? "Activar" : "Activate")}
+                {isRunning
+                  ? language === "es"
+                    ? "Detener"
+                    : "Stop"
+                  : language === "es"
+                    ? "Activar"
+                    : "Activate"}
               </button>
             </div>
           </div>
@@ -3471,23 +4962,46 @@ function WatcherDashboard({
 
         <article className="panel">
           <header className="panel-header">
-            <h3>{language === "es" ? "¿Cómo funciona la Carpeta Watcher?" : "How does the Watcher Folder work?"}</h3>
+            <h3>
+              {language === "es"
+                ? "¿Cómo funciona la Carpeta Watcher?"
+                : "How does the Watcher Folder work?"}
+            </h3>
           </header>
-          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "12px", fontSize: "0.88rem", lineHeight: 1.5 }}>
+          <div
+            style={{
+              padding: "20px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+              fontSize: "0.88rem",
+              lineHeight: 1.5,
+            }}
+          >
             <p style={{ margin: 0 }}>
               {language === "es"
                 ? "Esta herramienta automatiza la subida de fotografías a tus álbumes de Lumepic sin tener que cargarlas manualmente en la web."
                 : "This tool automates the upload of photographs to your Lumepic albums without having to upload them manually on the web."}
             </p>
-            <ol style={{ paddingLeft: "20px", margin: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
+            <ol
+              style={{
+                paddingLeft: "20px",
+                margin: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
               <li>
                 {language === "es" ? (
                   <>
-                    <strong>Crea una carpeta local</strong> en tu computadora (ej. <code>/Users/juannito/LumepicWatchFolder</code>).
+                    <strong>Crea una carpeta local</strong> en tu computadora
+                    (ej. <code>/Users/juannito/LumepicWatchFolder</code>).
                   </>
                 ) : (
                   <>
-                    <strong>Create a local folder</strong> on your computer (e.g. <code>/Users/name/LumepicWatchFolder</code>).
+                    <strong>Create a local folder</strong> on your computer
+                    (e.g. <code>/Users/name/LumepicWatchFolder</code>).
                   </>
                 )}
               </li>
@@ -3497,10 +5011,28 @@ function WatcherDashboard({
                   : "Configure the folder path, photographer, and destination album above."}
               </li>
               <li>
-                <strong>{language === "es" ? "Activa el Watcher" : "Activate the Watcher"}</strong>. {language === "es" ? "El sistema creará automáticamente dos carpetas internas dentro de tu ruta:" : "The system will automatically create two internal folders inside your path:"}
+                <strong>
+                  {language === "es"
+                    ? "Activa el Watcher"
+                    : "Activate the Watcher"}
+                </strong>
+                .{" "}
+                {language === "es"
+                  ? "El sistema creará automáticamente dos carpetas internas dentro de tu ruta:"
+                  : "The system will automatically create two internal folders inside your path:"}
                 <ul style={{ paddingLeft: "20px", marginTop: "4px" }}>
-                  <li><code>.processed/</code>: {language === "es" ? "Fotos que se subieron **exitosamente**." : "Photos uploaded **successfully**."}</li>
-                  <li><code>.failed/</code>: {language === "es" ? "Si ocurre algún error, las fotos se guardarán aquí con el detalle del error." : "If an error occurs, the photos will be saved here with the error details."}</li>
+                  <li>
+                    <code>.processed/</code>:{" "}
+                    {language === "es"
+                      ? "Fotos que se subieron **exitosamente**."
+                      : "Photos uploaded **successfully**."}
+                  </li>
+                  <li>
+                    <code>.failed/</code>:{" "}
+                    {language === "es"
+                      ? "Si ocurre algún error, las fotos se guardarán aquí con el detalle del error."
+                      : "If an error occurs, the photos will be saved here with the error details."}
+                  </li>
                 </ul>
               </li>
               <li>
@@ -3515,80 +5047,146 @@ function WatcherDashboard({
 
       {/* Public Events Section */}
       <section className="panel" style={{ marginTop: "24px" }}>
-        <header className="panel-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <header
+          className="panel-header"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <div>
-            <h3>{language === "es" ? "Eventos Públicos en tu Ubicación" : "Public Events in your Location"}</h3>
-            <p style={{ fontSize: "0.82rem", color: "var(--muted)", margin: "4px 0 0 0" }}>
+            <h3>
+              {language === "es"
+                ? "Eventos Públicos en tu Ubicación"
+                : "Public Events in your Location"}
+            </h3>
+            <p
+              style={{
+                fontSize: "0.82rem",
+                color: "var(--muted)",
+                margin: "4px 0 0 0",
+              }}
+            >
               {language === "es"
                 ? "Crea un álbum para cualquiera de estos eventos oficiales con un solo clic y empieza a sincronizar fotos de inmediato"
                 : "Create an album for any of these official events with a single click and start syncing photos immediately"}
             </p>
           </div>
-          <span style={{
-            background: "var(--line)",
-            padding: "4px 12px",
-            borderRadius: "999px",
-            fontSize: "0.78rem",
-            fontWeight: 600,
-            color: "var(--ink)"
-          }}>
-            {events.length} {language === "es" ? "Eventos Disponibles" : "Events Available"}
+          <span
+            style={{
+              background: "var(--line)",
+              padding: "4px 12px",
+              borderRadius: "999px",
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              color: "var(--ink)",
+            }}
+          >
+            {events.length}{" "}
+            {language === "es" ? "Eventos Disponibles" : "Events Available"}
           </span>
         </header>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>{language === "es" ? "Nombre del Evento" : "Event Name"}</th>
+                <th>
+                  {language === "es" ? "Nombre del Evento" : "Event Name"}
+                </th>
                 <th>{language === "es" ? "Fecha del Evento" : "Event Date"}</th>
                 <th>{language === "es" ? "Ubicación" : "Location"}</th>
-                <th>{language === "es" ? "Estado en tu Cuenta" : "Account Status"}</th>
+                <th>
+                  {language === "es" ? "Estado en tu Cuenta" : "Account Status"}
+                </th>
                 <th>{language === "es" ? "Acción" : "Action"}</th>
               </tr>
             </thead>
             <tbody>
               {events.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "30px", color: "var(--muted)" }}>
-                    {language === "es" ? "No se encontraron eventos públicos activos en tu región." : "No active public events were found in your region."}
+                  <td
+                    colSpan={5}
+                    style={{
+                      textAlign: "center",
+                      padding: "30px",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    {language === "es"
+                      ? "No se encontraron eventos públicos activos en tu región."
+                      : "No active public events were found in your region."}
                   </td>
                 </tr>
               ) : (
                 events.map((event) => {
                   const existingAlbum = getExistingAlbumForEvent(event.id);
-                  const isSelected = existingAlbum && targetAlbumId === existingAlbum.id;
+                  const isSelected =
+                    existingAlbum && targetAlbumId === existingAlbum.id;
                   return (
                     <tr key={event.id}>
-                      <td data-label={language === "es" ? "Nombre del Evento" : "Event Name"} style={{ fontWeight: 600 }}>
+                      <td
+                        data-label={
+                          language === "es" ? "Nombre del Evento" : "Event Name"
+                        }
+                        style={{ fontWeight: 600 }}
+                      >
                         {event.name}
                       </td>
-                      <td data-label={language === "es" ? "Fecha del Evento" : "Event Date"}>
-                        {new Date(event.date).toLocaleDateString(language === "es" ? "es-AR" : "en-US", { year: "numeric", month: "long", day: "numeric" })}
+                      <td
+                        data-label={
+                          language === "es" ? "Fecha del Evento" : "Event Date"
+                        }
+                      >
+                        {new Date(event.date).toLocaleDateString(
+                          language === "es" ? "es-AR" : "en-US",
+                          { year: "numeric", month: "long", day: "numeric" },
+                        )}
                       </td>
-                      <td data-label={language === "es" ? "Ubicación" : "Location"}>
+                      <td
+                        data-label={
+                          language === "es" ? "Ubicación" : "Location"
+                        }
+                      >
                         {event.locationName}
                       </td>
-                      <td data-label={language === "es" ? "Estado en tu Cuenta" : "Account Status"}>
+                      <td
+                        data-label={
+                          language === "es"
+                            ? "Estado en tu Cuenta"
+                            : "Account Status"
+                        }
+                      >
                         {existingAlbum ? (
-                          <span style={{
-                            background: "#e6f4ea",
-                            color: "#137333",
-                            padding: "4px 8px",
-                            borderRadius: "4px",
-                            fontSize: "0.75rem",
-                            fontWeight: 600
-                          }}>
-                            ✓ {language === "es" ? "Creado" : "Created"} ({existingAlbum.photographerName || (language === "es" ? "Fotógrafo" : "Photographer")}) ({existingAlbum.photosCount} {language === "es" ? "f." : "p."})
+                          <span
+                            style={{
+                              background: "#e6f4ea",
+                              color: "#137333",
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            ✓ {language === "es" ? "Creado" : "Created"} (
+                            {existingAlbum.photographerName ||
+                              (language === "es"
+                                ? "Fotógrafo"
+                                : "Photographer")}
+                            ) ({existingAlbum.photosCount}{" "}
+                            {language === "es" ? "f." : "p."})
                           </span>
                         ) : (
-                          <span style={{
-                            background: "var(--line)",
-                            color: "var(--muted)",
-                            padding: "4px 8px",
-                            borderRadius: "4px",
-                            fontSize: "0.75rem",
-                            fontWeight: 600
-                          }}>
+                          <span
+                            style={{
+                              background: "var(--line)",
+                              color: "var(--muted)",
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                            }}
+                          >
                             {language === "es" ? "No Creado" : "Not Created"}
                           </span>
                         )}
@@ -3598,27 +5196,40 @@ function WatcherDashboard({
                           <button
                             className="text-button"
                             onClick={() => {
-                              if (existingAlbum.profileId && existingAlbum.profileId !== profileId) {
+                              if (
+                                existingAlbum.profileId &&
+                                existingAlbum.profileId !== profileId
+                              ) {
                                 setProfileId(existingAlbum.profileId);
                                 setTargetAlbumId(existingAlbum.id);
                                 handleSaveConfig({
                                   profileId: existingAlbum.profileId,
-                                  targetAlbumId: existingAlbum.id
+                                  targetAlbumId: existingAlbum.id,
                                 });
                               } else {
                                 setTargetAlbumId(existingAlbum.id);
-                                handleSaveConfig({ targetAlbumId: existingAlbum.id });
+                                handleSaveConfig({
+                                  targetAlbumId: existingAlbum.id,
+                                });
                               }
                             }}
                             disabled={isSelected}
                             style={{
                               padding: "6px 12px",
                               fontSize: "0.8rem",
-                              background: isSelected ? "var(--line)" : "transparent",
-                              fontWeight: isSelected ? 600 : 400
+                              background: isSelected
+                                ? "var(--line)"
+                                : "transparent",
+                              fontWeight: isSelected ? 600 : 400,
                             }}
                           >
-                            {isSelected ? (language === "es" ? "Seleccionado" : "Selected") : (language === "es" ? "Seleccionar" : "Select")}
+                            {isSelected
+                              ? language === "es"
+                                ? "Seleccionado"
+                                : "Selected"
+                              : language === "es"
+                                ? "Seleccionar"
+                                : "Select"}
                           </button>
                         ) : (
                           <button
@@ -3630,16 +5241,20 @@ function WatcherDashboard({
                               fontSize: "0.8rem",
                               display: "flex",
                               alignItems: "center",
-                              gap: "4px"
+                              gap: "4px",
                             }}
                           >
                             {creatingAlbumId === event.id ? (
                               <>
                                 <RefreshCw size={12} className="spin" />
-                                {language === "es" ? "Creando..." : "Creating..."}
+                                {language === "es"
+                                  ? "Creando..."
+                                  : "Creating..."}
                               </>
+                            ) : language === "es" ? (
+                              "Crear Álbum en Lumepic"
                             ) : (
-                              language === "es" ? "Crear Álbum en Lumepic" : "Create Album in Lumepic"
+                              "Create Album in Lumepic"
                             )}
                           </button>
                         )}
@@ -3654,10 +5269,30 @@ function WatcherDashboard({
       </section>
 
       <section className="panel" style={{ marginTop: "24px" }}>
-        <header className="panel-header" style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
+        <header
+          className="panel-header"
+          style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <h3>{t.uploadHistory}</h3>
-          <label style={{ position: "relative", display: "flex", alignItems: "center", minWidth: 260, maxWidth: 380, flex: "0 1 380px" }}>
-            <Search size={16} style={{ position: "absolute", left: 12, color: "var(--muted)" }} />
+          <label
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              minWidth: 260,
+              maxWidth: 380,
+              flex: "0 1 380px",
+            }}
+          >
+            <Search
+              size={16}
+              style={{ position: "absolute", left: 12, color: "var(--muted)" }}
+            />
             <input
               type="search"
               value={historySearch}
@@ -3683,107 +5318,214 @@ function WatcherDashboard({
                 <th>{language === "es" ? "Fecha de Carga" : "Upload Date"}</th>
                 <th>{language === "es" ? "Tamaño" : "Size"}</th>
                 <th>{language === "es" ? "Estado" : "Status"}</th>
-                <th>{language === "es" ? "Detalle / Reporte" : "Detail / Report"}</th>
+                <th>
+                  {language === "es" ? "Detalle / Reporte" : "Detail / Report"}
+                </th>
               </tr>
             </thead>
             <tbody>
               {history.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-                    {language === "es" ? "No se han detectado archivos en la carpeta todavía. Copia fotos para comenzar." : "No files have been detected in the folder yet. Copy photos to begin."}
+                  <td
+                    colSpan={5}
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    {language === "es"
+                      ? "No se han detectado archivos en la carpeta todavía. Copia fotos para comenzar."
+                      : "No files have been detected in the folder yet. Copy photos to begin."}
                   </td>
                 </tr>
               ) : filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-                    {language === "es" ? "No hay cargas que coincidan con la búsqueda." : "No uploads match your search."}
+                  <td
+                    colSpan={5}
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    {language === "es"
+                      ? "No hay cargas que coincidan con la búsqueda."
+                      : "No uploads match your search."}
                   </td>
                 </tr>
               ) : (
                 filteredHistory.map((item) => (
                   <tr key={item.id}>
-                    <td data-label={language === "es" ? "Archivo" : "File"} style={{ fontWeight: 600 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <FolderOpen size={16} style={{ color: "var(--muted)" }} />
+                    <td
+                      data-label={language === "es" ? "Archivo" : "File"}
+                      style={{ fontWeight: 600 }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <FolderOpen
+                          size={16}
+                          style={{ color: "var(--muted)" }}
+                        />
                         {item.filename}
                       </div>
                     </td>
-                    <td data-label={language === "es" ? "Fecha de Carga" : "Upload Date"}>
-                      {new Date(item.timestamp).toLocaleString(language === "es" ? "es-AR" : "en-US")}
+                    <td
+                      data-label={
+                        language === "es" ? "Fecha de Carga" : "Upload Date"
+                      }
+                    >
+                      {new Date(item.timestamp).toLocaleString(
+                        language === "es" ? "es-AR" : "en-US",
+                      )}
                     </td>
                     <td data-label={language === "es" ? "Tamaño" : "Size"}>
                       {item.size ? formatBytes(item.size) : "—"}
                     </td>
                     <td data-label={language === "es" ? "Estado" : "Status"}>
                       {item.status === "success" ? (
-                        <span style={{
-                          background: "#e6f4ea",
-                          color: "#137333",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600
-                        }}>{language === "es" ? "Exitoso" : "Success"}</span>
+                        <span
+                          style={{
+                            background: "#e6f4ea",
+                            color: "#137333",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {language === "es" ? "Exitoso" : "Success"}
+                        </span>
                       ) : item.status === "deleted" ? (
-                        <span style={{
-                          background: "var(--line)",
-                          color: "var(--muted)",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600
-                        }}>{language === "es" ? "Borrado" : "Deleted"}</span>
+                        <span
+                          style={{
+                            background: "var(--line)",
+                            color: "var(--muted)",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {language === "es" ? "Borrado" : "Deleted"}
+                        </span>
                       ) : item.retryable ? (
-                        <span style={{
-                          background: "#fff4ce",
-                          color: "#8a5a00",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600
-                        }}>{language === "es" ? "Pendiente de reintento" : "Pending retry"}</span>
+                        <span
+                          style={{
+                            background: "#fff4ce",
+                            color: "#8a5a00",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {language === "es"
+                            ? "Pendiente de reintento"
+                            : "Pending retry"}
+                        </span>
                       ) : (
-                        <span style={{
-                          background: "#fce8e6",
-                          color: "#c5221f",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600
-                        }}>{language === "es" ? "Fallido" : "Failed"}</span>
+                        <span
+                          style={{
+                            background: "#fce8e6",
+                            color: "#c5221f",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {language === "es" ? "Fallido" : "Failed"}
+                        </span>
                       )}
                     </td>
-                    <td data-label={language === "es" ? "Detalle / Reporte" : "Detail / Report"} style={{ fontSize: "0.82rem", color: item.status === "failed" ? "#c5221f" : "var(--muted)" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <td
+                      data-label={
+                        language === "es"
+                          ? "Detalle / Reporte"
+                          : "Detail / Report"
+                      }
+                      style={{
+                        fontSize: "0.82rem",
+                        color:
+                          item.status === "failed" ? "#c5221f" : "var(--muted)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                        }}
+                      >
                         <span>
                           {item.status === "deleted"
                             ? `${language === "es" ? "Foto borrada de Lumepic" : "Photo deleted from Lumepic"}${item.deletedAt ? ` ${language === "es" ? "el" : "on"} ${new Date(item.deletedAt).toLocaleString(language === "es" ? "es-AR" : "en-US")}` : ""}`
-                            : item.error || (language === "es" ? "Subido exitosamente al álbum" : "Successfully uploaded to album")}
+                            : item.error ||
+                              (language === "es"
+                                ? "Subido exitosamente al álbum"
+                                : "Successfully uploaded to album")}
                         </span>
                         {item.status === "success" ? (
-                          <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
-                            {language === "es" ? "ID foto" : "Photo ID"}: {item.uploadedPhotographId || item.id}
+                          <span
+                            style={{
+                              color: "var(--muted)",
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            {language === "es" ? "ID foto" : "Photo ID"}:{" "}
+                            {item.uploadedPhotographId || item.id}
                           </span>
                         ) : null}
                         {item.status === "deleted" ? (
-                          <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
-                            {language === "es" ? "ID foto" : "Photo ID"}: {item.deletedPhotographId || item.uploadedPhotographId || item.id}
+                          <span
+                            style={{
+                              color: "var(--muted)",
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            {language === "es" ? "ID foto" : "Photo ID"}:{" "}
+                            {item.deletedPhotographId ||
+                              item.uploadedPhotographId ||
+                              item.id}
                           </span>
                         ) : null}
-                        <span style={{ color: "var(--muted)" }}>{language === "es" ? "Tiempo" : "Time"}: {formatDuration(item.durationMs)}</span>
+                        <span style={{ color: "var(--muted)" }}>
+                          {language === "es" ? "Tiempo" : "Time"}:{" "}
+                          {formatDuration(item.durationMs)}
+                        </span>
                         {item.attempts ? (
-                          <span style={{ color: "var(--muted)" }}>{language === "es" ? "Intentos" : "Attempts"}: {item.attempts}</span>
+                          <span style={{ color: "var(--muted)" }}>
+                            {language === "es" ? "Intentos" : "Attempts"}:{" "}
+                            {item.attempts}
+                          </span>
                         ) : null}
                         {item.retryable ? (
                           <span style={{ color: "var(--muted)" }}>
-                            {language === "es" ? "Próximo intento" : "Next retry"}: {formatRetryTime(item.nextRetryAt) || (language === "es" ? "en el próximo ciclo" : "in the next cycle")}
+                            {language === "es"
+                              ? "Próximo intento"
+                              : "Next retry"}
+                            :{" "}
+                            {formatRetryTime(item.nextRetryAt) ||
+                              (language === "es"
+                                ? "en el próximo ciclo"
+                                : "in the next cycle")}
                           </span>
                         ) : null}
-                        {item.status === "success" && (item.uploadedPhotographId || item.id) ? (
+                        {item.status === "success" &&
+                        (item.uploadedPhotographId || item.id) ? (
                           <button
                             className="text-button"
                             onClick={() => handleDeletePhotograph(item)}
-                            disabled={deletingPhotographId === (item.uploadedPhotographId || item.id)}
+                            disabled={
+                              deletingPhotographId ===
+                              (item.uploadedPhotographId || item.id)
+                            }
                             style={{
                               alignSelf: "flex-start",
                               minHeight: 30,
@@ -3796,7 +5538,14 @@ function WatcherDashboard({
                             }}
                           >
                             <Trash2 size={13} />
-                            {deletingPhotographId === (item.uploadedPhotographId || item.id) ? (language === "es" ? "Borrando..." : "Deleting...") : (language === "es" ? "Borrar foto" : "Delete photo")}
+                            {deletingPhotographId ===
+                            (item.uploadedPhotographId || item.id)
+                              ? language === "es"
+                                ? "Borrando..."
+                                : "Deleting..."
+                              : language === "es"
+                                ? "Borrar foto"
+                                : "Delete photo"}
                           </button>
                         ) : null}
                       </div>
@@ -3833,11 +5582,19 @@ interface GalleryPhotoCardProps {
   language: Language;
   onOpenLightbox: () => void;
   copiedId: string | null;
-  handleCopyFileName: (fileName: string, photoId: string, e: React.MouseEvent) => void;
+  handleCopyFileName: (
+    fileName: string,
+    photoId: string,
+    e: React.MouseEvent,
+  ) => void;
   profilesLength: number;
   resolvedLocalUrls: Record<string, string>;
-  setResolvedLocalUrls: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  setVisiblePhotoKeys: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setResolvedLocalUrls: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  setVisiblePhotoKeys: React.Dispatch<
+    React.SetStateAction<Record<string, boolean>>
+  >;
   permissionRetry: number;
 }
 
@@ -3854,10 +5611,12 @@ function GalleryPhotoCard({
   resolvedLocalUrls,
   setResolvedLocalUrls,
   setVisiblePhotoKeys,
-  permissionRetry
+  permissionRetry,
 }: GalleryPhotoCardProps) {
   const [localUrl, setLocalUrl] = useState<string | null>(null);
-  const [localSearchStatus, setLocalSearchStatus] = useState<"idle" | "searching" | "found" | "not_found" | "permission_denied">("idle");
+  const [localSearchStatus, setLocalSearchStatus] = useState<
+    "idle" | "searching" | "found" | "not_found" | "permission_denied"
+  >("idle");
   const [highResLoaded, setHighResLoaded] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -3878,7 +5637,7 @@ function GalleryPhotoCard({
           setIsVisible(entry.isIntersecting);
         });
       },
-      { rootMargin: "300px" } // Preload when 300px close to viewport
+      { rootMargin: "300px" }, // Preload when 300px close to viewport
     );
 
     const currentCard = cardRef.current;
@@ -3896,12 +5655,12 @@ function GalleryPhotoCard({
   // Track visibility in the parent component
   useEffect(() => {
     if (isVisible) {
-      setVisiblePhotoKeys(prev => {
+      setVisiblePhotoKeys((prev) => {
         if (prev[cacheKey]) return prev;
         return { ...prev, [cacheKey]: true };
       });
     } else {
-      setVisiblePhotoKeys(prev => {
+      setVisiblePhotoKeys((prev) => {
         if (!prev[cacheKey]) return prev;
         const next = { ...prev };
         delete next[cacheKey];
@@ -3910,7 +5669,7 @@ function GalleryPhotoCard({
     }
 
     return () => {
-      setVisiblePhotoKeys(prev => {
+      setVisiblePhotoKeys((prev) => {
         if (!prev[cacheKey]) return prev;
         const next = { ...prev };
         delete next[cacheKey];
@@ -3941,14 +5700,21 @@ function GalleryPhotoCard({
       try {
         // 1. Resolve directory handle
         let dirHandle = null;
-        const matchedEvent = customEvents.find(e => e.albumIds.includes(item.albumId));
+        const matchedEvent = customEvents.find((e) =>
+          e.albumIds.includes(item.albumId),
+        );
         const photoDate = getPhotoDate(item, item.sale, albumMap);
         let matchedSubEvent = null;
 
         if (matchedEvent) {
-          matchedSubEvent = matchedEvent.subEvents.find(s => s.date === photoDate);
+          matchedSubEvent = matchedEvent.subEvents.find(
+            (s) => s.date === photoDate,
+          );
           if (matchedSubEvent && matchedSubEvent.localDirName) {
-            dirHandle = await getLocalDirectoryHandleForSubEvent(matchedEvent.id, matchedSubEvent.id);
+            dirHandle = await getLocalDirectoryHandleForSubEvent(
+              matchedEvent.id,
+              matchedSubEvent.id,
+            );
           }
           if (!dirHandle && matchedEvent.localDirName) {
             dirHandle = await getLocalDirectoryHandleForEvent(matchedEvent.id);
@@ -3986,7 +5752,7 @@ function GalleryPhotoCard({
         if (!active) return;
 
         const url = URL.createObjectURL(file);
-        setResolvedLocalUrls(prev => ({ ...prev, [cacheKey]: url }));
+        setResolvedLocalUrls((prev) => ({ ...prev, [cacheKey]: url }));
         setLocalUrl(url);
         setLocalSearchStatus("found");
       } catch (err) {
@@ -4002,27 +5768,39 @@ function GalleryPhotoCard({
     return () => {
       active = false;
     };
-  }, [isVisible, customEvents, globalDirHandle, item, albumMap, cachedUrl, cacheKey, setResolvedLocalUrls, permissionRetry]);
+  }, [
+    isVisible,
+    customEvents,
+    globalDirHandle,
+    item,
+    albumMap,
+    cachedUrl,
+    cacheKey,
+    setResolvedLocalUrls,
+    permissionRetry,
+  ]);
 
   const isComped = item.sale.isComped;
   const saleDate = new Date(item.sale.date);
-  const hourStr = saleDate.toLocaleTimeString(language === "es" ? "es-AR" : "en-US", { hour: "2-digit", minute: "2-digit" });
-  const dayStr = saleDate.toLocaleDateString(language === "es" ? "es-AR" : "en-US", { day: "2-digit", month: "short", year: "numeric" });
+  const hourStr = saleDate.toLocaleTimeString(
+    language === "es" ? "es-AR" : "en-US",
+    { hour: "2-digit", minute: "2-digit" },
+  );
+  const dayStr = saleDate.toLocaleDateString(
+    language === "es" ? "es-AR" : "en-US",
+    { day: "2-digit", month: "short", year: "numeric" },
+  );
 
   return (
-    <article 
-      className="photo-card" 
-      ref={cardRef}
-      onClick={onOpenLightbox}
-    >
+    <article className="photo-card" ref={cardRef} onClick={onOpenLightbox}>
       <div className="photo-image-wrap">
-        <img 
-          src={localUrl || item.thumbnailUrl || item.url} 
-          alt={item.originalFileName} 
+        <img
+          src={localUrl || item.thumbnailUrl || item.url}
+          alt={item.originalFileName}
           loading="lazy"
           style={{
             transition: "opacity 0.3s",
-            opacity: (localUrl && highResLoaded) ? 1 : 0.85
+            opacity: localUrl && highResLoaded ? 1 : 0.85,
           }}
           onLoad={() => {
             if (localUrl) {
@@ -4030,59 +5808,60 @@ function GalleryPhotoCard({
             }
           }}
         />
-        {(localSearchStatus === "searching" || (localSearchStatus === "found" && !highResLoaded)) && (
-          <span 
-            className="buyer-badge" 
-            style={{ 
-              position: "absolute", 
-              top: "8px", 
-              left: "8px", 
-              background: "rgba(0, 0, 0, 0.6)", 
-              color: "white", 
-              fontSize: "0.65rem", 
-              padding: "4px 8px", 
-              borderRadius: "4px", 
+        {(localSearchStatus === "searching" ||
+          (localSearchStatus === "found" && !highResLoaded)) && (
+          <span
+            className="buyer-badge"
+            style={{
+              position: "absolute",
+              top: "8px",
+              left: "8px",
+              background: "rgba(0, 0, 0, 0.6)",
+              color: "white",
+              fontSize: "0.65rem",
+              padding: "4px 8px",
+              borderRadius: "4px",
               fontWeight: "bold",
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px"
+              gap: "6px",
             }}
           >
-            <span style={{
-              width: "8px",
-              height: "8px",
-              border: "1px solid white",
-              borderTopColor: "transparent",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-              display: "inline-block"
-            }} />
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                border: "1px solid white",
+                borderTopColor: "transparent",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+                display: "inline-block",
+              }}
+            />
             {language === "es" ? "Buscando alta..." : "Searching HD..."}
           </span>
         )}
         {localSearchStatus === "found" && highResLoaded && (
-          <span 
-            className="buyer-badge" 
-            style={{ 
-              position: "absolute", 
-              top: "8px", 
-              left: "8px", 
-              background: "var(--accent, #6366f1)", 
-              color: "white", 
-              fontSize: "0.65rem", 
-              padding: "4px 8px", 
-              borderRadius: "4px", 
-              fontWeight: "bold" 
+          <span
+            className="buyer-badge"
+            style={{
+              position: "absolute",
+              top: "8px",
+              left: "8px",
+              background: "var(--accent, #6366f1)",
+              color: "white",
+              fontSize: "0.65rem",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              fontWeight: "bold",
             }}
           >
             {language === "es" ? "LOCAL ALTA" : "LOCAL HD"}
           </span>
         )}
-        {isComped && (
-          <span className="buyer-badge is-comped">Lumepic</span>
-        )}
+        {isComped && <span className="buyer-badge is-comped">Lumepic</span>}
       </div>
-      
+
       <div className="photo-card-info">
         <div className="file-name-row">
           <span className="file-name" title={item.originalFileName}>
@@ -4090,8 +5869,14 @@ function GalleryPhotoCard({
           </span>
           <button
             className="copy-btn"
-            onClick={(e) => handleCopyFileName(item.originalFileName, item.id, e)}
-            title={language === "es" ? "Copiar nombre original" : "Copy original name"}
+            onClick={(e) =>
+              handleCopyFileName(item.originalFileName, item.id, e)
+            }
+            title={
+              language === "es"
+                ? "Copiar nombre original"
+                : "Copy original name"
+            }
           >
             {copiedId === item.id ? (
               <Check size={13} style={{ color: "var(--green)" }} />
@@ -4102,63 +5887,116 @@ function GalleryPhotoCard({
         </div>
 
         <div className="photo-meta-list">
-          <div className="photo-meta-item highlighted-time" title={language === "es" ? "Hora de compra local" : "Local purchase time"}>
+          <div
+            className="photo-meta-item highlighted-time"
+            title={
+              language === "es" ? "Hora de compra local" : "Local purchase time"
+            }
+          >
             <Clock size={12} />
             <strong>{hourStr}</strong>
-            <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>({dayStr})</span>
+            <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>
+              ({dayStr})
+            </span>
           </div>
-          <div className="photo-meta-item" style={{ color: "var(--ink)", fontWeight: "600" }} title={language === "es" ? "Monto de la venta" : "Sale amount"}>
+          <div
+            className="photo-meta-item"
+            style={{ color: "var(--ink)", fontWeight: "600" }}
+            title={language === "es" ? "Monto de la venta" : "Sale amount"}
+          >
             <BadgeDollarSign size={12} style={{ color: "var(--muted)" }} />
             <span>
-              {item.sale.isComped ? (language === "es" ? "Bonificado" : "Comped") : money.format(item.sale.total)}
+              {item.sale.isComped
+                ? language === "es"
+                  ? "Bonificado"
+                  : "Comped"
+                : money.format(item.sale.total)}
             </span>
             {item.sale.photos > 1 && (
-              <span style={{ fontSize: "0.7rem", color: "var(--muted)", fontWeight: "normal", marginLeft: "4px" }}>
-                {language === "es" ? `(Total de ${item.sale.photos} fotos)` : `(Total for ${item.sale.photos} photos)`}
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  color: "var(--muted)",
+                  fontWeight: "normal",
+                  marginLeft: "4px",
+                }}
+              >
+                {language === "es"
+                  ? `(Total de ${item.sale.photos} fotos)`
+                  : `(Total for ${item.sale.photos} photos)`}
               </span>
             )}
           </div>
-          
+
           {!item.sale.isComped && (
-            <div 
-              className="photo-fee-breakdown" 
+            <div
+              className="photo-fee-breakdown"
               onClick={(e) => e.stopPropagation()}
-              style={{ 
-                fontSize: "0.72rem", 
-                color: "var(--muted)", 
-                background: "var(--paper-2, rgba(0,0,0,0.02))", 
-                padding: "8px 10px", 
-                borderRadius: "8px", 
+              style={{
+                fontSize: "0.72rem",
+                color: "var(--muted)",
+                background: "var(--paper-2, rgba(0,0,0,0.02))",
+                padding: "8px 10px",
+                borderRadius: "8px",
                 marginTop: "6px",
                 marginBottom: "6px",
                 display: "flex",
                 flexDirection: "column",
                 gap: "3px",
-                border: "1px dashed var(--line, rgba(0,0,0,0.05))"
+                border: "1px dashed var(--line, rgba(0,0,0,0.05))",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>{language === "es" ? "Bruto:" : "Gross:"}</span>
-                <span style={{ fontWeight: "600", color: "var(--ink)" }}>{money.format(item.sale.grossTotal)}</span>
+                <span style={{ fontWeight: "600", color: "var(--ink)" }}>
+                  {money.format(item.sale.grossTotal)}
+                </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--red, #ef4444)", opacity: 0.9 }}>
-                <span>{language === "es" ? "└ Comisión Stripe:" : "└ Stripe Fee:"}</span>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  color: "var(--red, #ef4444)",
+                  opacity: 0.9,
+                }}
+              >
+                <span>
+                  {language === "es" ? "└ Comisión Stripe:" : "└ Stripe Fee:"}
+                </span>
                 <span>-{money.format(item.sale.stripeFee || 0)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--red, #ef4444)", opacity: 0.9 }}>
-                <span>{language === "es" ? "└ Comisión Lumepic:" : "└ Lumepic Fee:"}</span>
-                <span>-{money.format(Math.max(item.sale.fees - (item.sale.stripeFee || 0), 0))}</span>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  color: "var(--red, #ef4444)",
+                  opacity: 0.9,
+                }}
+              >
+                <span>
+                  {language === "es" ? "└ Comisión Lumepic:" : "└ Lumepic Fee:"}
+                </span>
+                <span>
+                  -
+                  {money.format(
+                    Math.max(item.sale.fees - (item.sale.stripeFee || 0), 0),
+                  )}
+                </span>
               </div>
-              <div style={{ 
-                display: "flex", 
-                justifyContent: "space-between", 
-                borderTop: "1px solid var(--line, rgba(0,0,0,0.08))", 
-                paddingTop: "4px", 
-                marginTop: "2px", 
-                fontWeight: "700", 
-                color: "var(--accent, #6366f1)" 
-              }}>
-                <span>{language === "es" ? "Neto Recibido:" : "Net Received:"}</span>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  borderTop: "1px solid var(--line, rgba(0,0,0,0.08))",
+                  paddingTop: "4px",
+                  marginTop: "2px",
+                  fontWeight: "700",
+                  color: "var(--accent, #6366f1)",
+                }}
+              >
+                <span>
+                  {language === "es" ? "Neto Recibido:" : "Net Received:"}
+                </span>
                 <span>{money.format(item.sale.total)}</span>
               </div>
             </div>
@@ -4170,7 +6008,10 @@ function GalleryPhotoCard({
           </div>
           {profilesLength > 1 && (
             <div className="profile-indicator-row">
-              <span className="profile-dot" style={{ background: item.profileColor }} />
+              <span
+                className="profile-dot"
+                style={{ background: item.profileColor }}
+              />
               <span>{item.profileName}</span>
             </div>
           )}
@@ -4192,7 +6033,7 @@ function GalleryDashboard({
   visiblePhotoKeys,
   setVisiblePhotoKeys,
   activeLightboxPhoto,
-  permissionRetry = 0
+  permissionRetry = 0,
 }: {
   profiles: DashboardSummary[];
   language?: Language;
@@ -4201,9 +6042,13 @@ function GalleryDashboard({
   localDirHandle?: FileSystemDirectoryHandle | null;
   localDirName?: string | null;
   resolvedLocalUrls: Record<string, string>;
-  setResolvedLocalUrls: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setResolvedLocalUrls: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
   visiblePhotoKeys: Record<string, boolean>;
-  setVisiblePhotoKeys: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setVisiblePhotoKeys: React.Dispatch<
+    React.SetStateAction<Record<string, boolean>>
+  >;
   activeLightboxPhoto: GalleryPhotoItem | null;
   permissionRetry?: number;
 }) {
@@ -4229,13 +6074,16 @@ function GalleryDashboard({
             id: photo.id,
             thumbnailUrl: photo.thumbnailUrl,
             url: photo.url,
-            originalFileName: photo.originalFileName || photo.id || (language === "es" ? "Fotografía" : "Photograph"),
+            originalFileName:
+              photo.originalFileName ||
+              photo.id ||
+              (language === "es" ? "Fotografía" : "Photograph"),
             albumId: photo.albumId,
             sale,
             profileId: profile.id,
             profileName: profile.profile.name,
             profileColor: profile.color,
-            takenDate: photo.takenDate
+            takenDate: photo.takenDate,
           });
         });
       });
@@ -4247,15 +6095,19 @@ function GalleryDashboard({
   // Map of all albums in the system for quick title/date lookups
   const albumMap = useMemo(() => {
     const map: Record<string, AlbumInsight> = {};
-    profiles.forEach(profile => {
-      profile.albums.forEach(album => {
+    profiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
         map[album.id] = album;
       });
     });
     return map;
   }, [profiles]);
 
-  const handleCopyFileName = (fileName: string, photoId: string, e?: React.MouseEvent) => {
+  const handleCopyFileName = (
+    fileName: string,
+    photoId: string,
+    e?: React.MouseEvent,
+  ) => {
     if (e) e.stopPropagation();
     navigator.clipboard.writeText(fileName);
     setCopiedId(photoId);
@@ -4297,11 +6149,19 @@ function GalleryDashboard({
 
     // Sort
     if (sortOrder === "recent") {
-      result.sort((a, b) => new Date(b.sale.date).getTime() - new Date(a.sale.date).getTime());
+      result.sort(
+        (a, b) =>
+          new Date(b.sale.date).getTime() - new Date(a.sale.date).getTime(),
+      );
     } else if (sortOrder === "oldest") {
-      result.sort((a, b) => new Date(a.sale.date).getTime() - new Date(b.sale.date).getTime());
+      result.sort(
+        (a, b) =>
+          new Date(a.sale.date).getTime() - new Date(b.sale.date).getTime(),
+      );
     } else if (sortOrder === "name") {
-      result.sort((a, b) => a.originalFileName.localeCompare(b.originalFileName));
+      result.sort((a, b) =>
+        a.originalFileName.localeCompare(b.originalFileName),
+      );
     }
 
     return result;
@@ -4311,12 +6171,18 @@ function GalleryDashboard({
     const total = allPhotos.length;
     const filtered = filteredPhotos.length;
     if (total === filtered) {
-      return `${total} ${total === 1 
-        ? (language === "es" ? "foto comprada" : "photo purchased") 
-        : (language === "es" ? "fotos compradas" : "photos purchased")}`;
+      return `${total} ${
+        total === 1
+          ? language === "es"
+            ? "foto comprada"
+            : "photo purchased"
+          : language === "es"
+            ? "fotos compradas"
+            : "photos purchased"
+      }`;
     }
-    return language === "es" 
-      ? `Mostrando ${filtered} de ${total} fotos` 
+    return language === "es"
+      ? `Mostrando ${filtered} de ${total} fotos`
       : `Showing ${filtered} of ${total} photos`;
   }, [allPhotos, filteredPhotos, language]);
 
@@ -4330,10 +6196,10 @@ function GalleryDashboard({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && visibleCount < filteredPhotos.length) {
-          setVisibleCount(prev => Math.min(prev + 10, filteredPhotos.length));
+          setVisibleCount((prev) => Math.min(prev + 10, filteredPhotos.length));
         }
       },
-      { rootMargin: "300px" } // Load early before reaching the screen bottom
+      { rootMargin: "300px" }, // Load early before reaching the screen bottom
     );
 
     const currentSentinel = sentinelRef.current;
@@ -4355,8 +6221,22 @@ function GalleryDashboard({
   return (
     <>
       <section className="panel" style={{ marginBottom: "18px" }}>
-        <header className="panel-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "16px", marginBottom: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <header
+          className="panel-header"
+          style={{
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: "16px",
+            marginBottom: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <div>
               <h2>{t.galleryTitle}</h2>
             </div>
@@ -4369,12 +6249,19 @@ function GalleryDashboard({
               <Search size={16} className="search-icon" />
               <input
                 type="text"
-                placeholder={language === "es" ? "Buscar por nombre, álbum, comprador o Lumepic..." : "Search by name, album, buyer or Lumepic..."}
+                placeholder={
+                  language === "es"
+                    ? "Buscar por nombre, álbum, comprador o Lumepic..."
+                    : "Search by name, album, buyer or Lumepic..."
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
-                <button className="clear-btn" onClick={() => setSearchQuery("")}>
+                <button
+                  className="clear-btn"
+                  onClick={() => setSearchQuery("")}
+                >
                   <X size={14} />
                 </button>
               )}
@@ -4405,9 +6292,19 @@ function GalleryDashboard({
                 value={purchaseType}
                 onChange={(e) => setPurchaseType(e.target.value)}
               >
-                <option value="all">{language === "es" ? "Todos los tipos de compra" : "All purchase types"}</option>
-                <option value="paid">{language === "es" ? "Sólo Pagadas" : "Paid Only"}</option>
-                <option value="comped">{language === "es" ? "Sólo Lumepic (Bonificadas)" : "Lumepic Only (Comped)"}</option>
+                <option value="all">
+                  {language === "es"
+                    ? "Todos los tipos de compra"
+                    : "All purchase types"}
+                </option>
+                <option value="paid">
+                  {language === "es" ? "Sólo Pagadas" : "Paid Only"}
+                </option>
+                <option value="comped">
+                  {language === "es"
+                    ? "Sólo Lumepic (Bonificadas)"
+                    : "Lumepic Only (Comped)"}
+                </option>
               </select>
             </div>
 
@@ -4418,47 +6315,100 @@ function GalleryDashboard({
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value)}
               >
-                <option value="recent">{language === "es" ? "Más recientes primero" : "Most recent first"}</option>
-                <option value="oldest">{language === "es" ? "Más antiguas primero" : "Oldest first"}</option>
-                <option value="name">{language === "es" ? "Por nombre de archivo" : "By file name"}</option>
+                <option value="recent">
+                  {language === "es"
+                    ? "Más recientes primero"
+                    : "Most recent first"}
+                </option>
+                <option value="oldest">
+                  {language === "es" ? "Más antiguas primero" : "Oldest first"}
+                </option>
+                <option value="name">
+                  {language === "es" ? "Por nombre de archivo" : "By file name"}
+                </option>
               </select>
             </div>
           </div>
-          
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line-soft)", paddingTop: "12px", fontSize: "0.82rem", color: "var(--muted)" }}>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderTop: "1px solid var(--line-soft)",
+              paddingTop: "12px",
+              fontSize: "0.82rem",
+              color: "var(--muted)",
+            }}
+          >
             <span>{photoCountLabel}</span>
-            {allPhotos.length > 0 && allPhotos.length > filteredPhotos.length && (
-              <button 
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedProfile("all");
-                  setPurchaseType("all");
-                  setSortOrder("recent");
-                }}
-                className="text-link-btn"
-                style={{ background: "none", border: "none", color: "var(--ink)", fontWeight: "600", cursor: "pointer", textDecoration: "underline", padding: 0 }}
-              >
-                {language === "es" ? "Restablecer filtros" : "Reset filters"}
-              </button>
-            )}
+            {allPhotos.length > 0 &&
+              allPhotos.length > filteredPhotos.length && (
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSelectedProfile("all");
+                    setPurchaseType("all");
+                    setSortOrder("recent");
+                  }}
+                  className="text-link-btn"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--ink)",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    padding: 0,
+                  }}
+                >
+                  {language === "es" ? "Restablecer filtros" : "Reset filters"}
+                </button>
+              )}
           </div>
         </header>
       </section>
 
       {filteredPhotos.length === 0 ? (
-        <section className="panel" style={{ padding: "64px 20px", textAlign: "center" }}>
-          <div style={{ display: "inline-flex", width: "64px", height: "64px", borderRadius: "50%", background: "var(--paper-2)", alignItems: "center", justifyContent: "center", marginBottom: "16px", border: "1px solid var(--line)" }}>
+        <section
+          className="panel"
+          style={{ padding: "64px 20px", textAlign: "center" }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              width: "64px",
+              height: "64px",
+              borderRadius: "50%",
+              background: "var(--paper-2)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "16px",
+              border: "1px solid var(--line)",
+            }}
+          >
             <Images size={28} style={{ color: "var(--muted)" }} />
           </div>
-          <h3>{language === "es" ? "No se encontraron fotografías" : "No photographs found"}</h3>
-          <p style={{ color: "var(--muted)", maxWidth: "420px", margin: "8px auto 0 auto", fontSize: "0.92rem" }}>
-            {allPhotos.length === 0 
-              ? (language === "es" 
-                  ? "Aún no se han detallado fotos vendidas. Asegúrate de que las transacciones contengan información detallada de fotografías."
-                  : "No sold photos have been itemized yet. Make sure transactions contain detailed photo information.")
-              : (language === "es"
-                  ? "Prueba modificando los filtros de búsqueda, fotógrafo o tipo de compra para encontrar lo que buscas."
-                  : "Try modifying search filters, photographer or purchase type to find what you are looking for.")}
+          <h3>
+            {language === "es"
+              ? "No se encontraron fotografías"
+              : "No photographs found"}
+          </h3>
+          <p
+            style={{
+              color: "var(--muted)",
+              maxWidth: "420px",
+              margin: "8px auto 0 auto",
+              fontSize: "0.92rem",
+            }}
+          >
+            {allPhotos.length === 0
+              ? language === "es"
+                ? "Aún no se han detallado fotos vendidas. Asegúrate de que las transacciones contengan información detallada de fotografías."
+                : "No sold photos have been itemized yet. Make sure transactions contain detailed photo information."
+              : language === "es"
+                ? "Prueba modificando los filtros de búsqueda, fotógrafo o tipo de compra para encontrar lo que buscas."
+                : "Try modifying search filters, photographer or purchase type to find what you are looking for."}
           </p>
         </section>
       ) : (
@@ -4474,7 +6424,9 @@ function GalleryDashboard({
                 globalDirHandle={localDirHandle}
                 albumMap={albumMap}
                 language={language}
-                onOpenLightbox={() => onOpenLightbox && onOpenLightbox(item, filteredPhotos)}
+                onOpenLightbox={() =>
+                  onOpenLightbox && onOpenLightbox(item, filteredPhotos)
+                }
                 copiedId={copiedId}
                 handleCopyFileName={handleCopyFileName}
                 profilesLength={profiles.length}
@@ -4487,25 +6439,25 @@ function GalleryDashboard({
           })}
 
           {visibleCount < filteredPhotos.length && (
-            <div 
-              ref={sentinelRef} 
-              style={{ 
-                height: "60px", 
-                display: "flex", 
-                alignItems: "center", 
-                justifyContent: "center", 
-                width: "100%", 
-                gridColumn: "1 / -1" 
+            <div
+              ref={sentinelRef}
+              style={{
+                height: "60px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                gridColumn: "1 / -1",
               }}
             >
-              <div 
-                className="pulse" 
-                style={{ 
-                  width: "10px", 
-                  height: "10px", 
-                  borderRadius: "50%", 
-                  background: "var(--accent, #6366f1)" 
-                }} 
+              <div
+                className="pulse"
+                style={{
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "50%",
+                  background: "var(--accent, #6366f1)",
+                }}
               />
             </div>
           )}
@@ -4515,6 +6467,1117 @@ function GalleryDashboard({
   );
 }
 
+// ─── EventPhotosDashboard ────────────────────────────────────────────────────
+
+interface EventAlbumPhoto {
+  id: string;
+  albumId: string;
+  albumTitle?: string;
+  thumbnailUrl: string;
+  url: string;
+  originalFileName: string;
+  takenDate?: string;
+}
+
+function EventPhotoCard({
+  photo,
+  dirHandle,
+  language,
+  copiedId,
+  onCopy,
+  resolvedLocalUrls,
+  setResolvedLocalUrls,
+  permissionRetry,
+}: {
+  photo: EventAlbumPhoto;
+  dirHandle: FileSystemDirectoryHandle | null;
+  language: Language;
+  copiedId: string | null;
+  onCopy: (fileName: string, photoId: string, e: React.MouseEvent) => void;
+  resolvedLocalUrls: Record<string, string>;
+  setResolvedLocalUrls: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  permissionRetry: number;
+}) {
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+  const [localStatus, setLocalStatus] = useState<
+    "idle" | "searching" | "found" | "not_found" | "permission_denied"
+  >("idle");
+  const [highResLoaded, setHighResLoaded] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const cacheKey = `evtphoto_${photo.id}`;
+  const cachedUrl = resolvedLocalUrls[cacheKey];
+
+  useEffect(() => {
+    setHighResLoaded(false);
+  }, [localUrl]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach((e) => setIsVisible(e.isIntersecting)),
+      { rootMargin: "300px" },
+    );
+    const el = cardRef.current;
+    if (el) observer.observe(el);
+    return () => {
+      if (el) observer.unobserve(el);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      if (!isVisible) {
+        setLocalUrl(null);
+        setLocalStatus("idle");
+        return;
+      }
+      if (cachedUrl) {
+        setLocalUrl(cachedUrl);
+        setLocalStatus("found");
+        return;
+      }
+      if (!dirHandle || !photo.originalFileName) {
+        setLocalStatus("not_found");
+        return;
+      }
+      setLocalStatus("searching");
+      try {
+        const hasPermission = await verifyDirectoryPermission(dirHandle, false);
+        if (!hasPermission || !active) {
+          setLocalStatus("permission_denied");
+          return;
+        }
+        const fileHandle = await findLocalPhotoHandle(
+          dirHandle,
+          photo.originalFileName,
+        );
+        if (!fileHandle || !active) {
+          setLocalStatus("not_found");
+          return;
+        }
+        const file = await fileHandle.getFile();
+        if (!active) return;
+        const url = URL.createObjectURL(file);
+        setResolvedLocalUrls((prev) => ({ ...prev, [cacheKey]: url }));
+        setLocalUrl(url);
+        setLocalStatus("found");
+      } catch {
+        if (active) setLocalStatus("not_found");
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [
+    isVisible,
+    dirHandle,
+    photo.originalFileName,
+    cachedUrl,
+    cacheKey,
+    setResolvedLocalUrls,
+    permissionRetry,
+  ]);
+
+  const imgSrc = localUrl || photo.thumbnailUrl || photo.url;
+
+  return (
+    <article className="photo-card" ref={cardRef}>
+      <div className="photo-image-wrap">
+        <img
+          src={imgSrc}
+          alt={photo.originalFileName}
+          loading="lazy"
+          style={{
+            transition: "opacity 0.3s",
+            opacity: localUrl && highResLoaded ? 1 : 0.85,
+          }}
+          onLoad={() => {
+            if (localUrl) setHighResLoaded(true);
+          }}
+        />
+        {(localStatus === "searching" ||
+          (localStatus === "found" && !highResLoaded)) && (
+          <span
+            className="buyer-badge"
+            style={{
+              position: "absolute",
+              top: "8px",
+              left: "8px",
+              background: "rgba(0,0,0,0.6)",
+              color: "white",
+              fontSize: "0.65rem",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              fontWeight: "bold",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                border: "1px solid white",
+                borderTopColor: "transparent",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+                display: "inline-block",
+              }}
+            />
+            {language === "es" ? "Buscando alta..." : "Searching HD..."}
+          </span>
+        )}
+        {localStatus === "found" && highResLoaded && (
+          <span
+            className="buyer-badge"
+            style={{
+              position: "absolute",
+              top: "8px",
+              left: "8px",
+              background: "var(--accent, #6366f1)",
+              color: "white",
+              fontSize: "0.65rem",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              fontWeight: "bold",
+            }}
+          >
+            {language === "es" ? "LOCAL ALTA" : "LOCAL HD"}
+          </span>
+        )}
+      </div>
+      <div className="photo-card-info">
+        <div className="file-name-row">
+          <span className="file-name" title={photo.originalFileName}>
+            {photo.originalFileName || photo.id}
+          </span>
+          <button
+            className="copy-btn"
+            onClick={(e) =>
+              onCopy(photo.originalFileName || photo.id, photo.id, e)
+            }
+            title={language === "es" ? "Copiar nombre" : "Copy filename"}
+          >
+            {copiedId === photo.id ? (
+              <Check size={13} style={{ color: "var(--green)" }} />
+            ) : (
+              <Copy size={13} />
+            )}
+          </button>
+        </div>
+        {photo.albumTitle && (
+          <div
+            className="photo-meta-list"
+            style={{ marginBottom: photo.takenDate ? "4px" : 0 }}
+          >
+            <div
+              className="photo-meta-item"
+              style={{ fontSize: "0.75rem", color: "var(--muted)" }}
+            >
+              <Album size={12} />
+              <span title={photo.albumTitle}>{photo.albumTitle}</span>
+            </div>
+          </div>
+        )}
+        {photo.takenDate && (
+          <div className="photo-meta-list">
+            <div
+              className="photo-meta-item"
+              style={{ fontSize: "0.78rem", color: "var(--muted)" }}
+            >
+              <Calendar size={12} />
+              <span>
+                {new Date(photo.takenDate).toLocaleDateString(
+                  language === "es" ? "es-AR" : "en-US",
+                  { day: "2-digit", month: "short", year: "numeric" },
+                )}
+              </span>
+            </div>
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            marginTop: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          {localUrl && (
+            <a
+              href={localUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                background: "var(--paper-2)",
+                border: "1px solid var(--line)",
+                color: "var(--ink)",
+                fontSize: "0.76rem",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <ExternalLink size={12} />
+              <span>{language === "es" ? "Abrir alta" : "Open HD"}</span>
+            </a>
+          )}
+          {photo.url && (
+            <a
+              href={photo.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                background: "transparent",
+                border: "1px solid var(--line)",
+                color: "var(--muted)",
+                fontSize: "0.76rem",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <Eye size={12} />
+              <span>{language === "es" ? "Ver web" : "View web"}</span>
+            </a>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function EventPhotosDashboard({
+  profiles,
+  customEvents,
+  language = "en",
+  localDirHandle,
+  resolvedLocalUrls,
+  setResolvedLocalUrls,
+  permissionRetry,
+}: {
+  profiles: DashboardSummary[];
+  customEvents: CustomEvent[];
+  language?: Language;
+  localDirHandle?: FileSystemDirectoryHandle | null;
+  resolvedLocalUrls: Record<string, string>;
+  setResolvedLocalUrls: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  permissionRetry?: number;
+}) {
+  const t = TRANSLATIONS[language];
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [selectedAlbumId, setSelectedAlbumId] = useState<string>("");
+  const [selectedProfileId, setSelectedProfileId] = useState<string>("all");
+  const [bibNumber, setBibNumber] = useState("");
+  const [bibInput, setBibInput] = useState("");
+  const [photos, setPhotos] = useState<EventAlbumPhoto[]>([]);
+  const [total, setTotal] = useState(0);
+  const [skip, setSkip] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // local folder per-event
+  const [eventDirHandle, setEventDirHandle] =
+    useState<FileSystemDirectoryHandle | null>(null);
+  const [selectingFolder, setSelectingFolder] = useState(false);
+
+  const LIMIT = 50;
+
+  const allAlbums = useMemo(() => {
+    const list: {
+      id: string;
+      title: string;
+      profileId: string;
+      profileLabel: string;
+      profileColor: string;
+    }[] = [];
+    profiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
+        list.push({
+          id: album.id,
+          title: album.title,
+          profileId: profile.id,
+          profileLabel: profile.label,
+          profileColor: profile.color,
+        });
+      });
+    });
+    return list;
+  }, [profiles]);
+
+  const visibleEvents = useMemo(() => {
+    if (customEvents.length === 0) return [];
+    return customEvents
+      .filter((event) =>
+        event.albumIds.some((albumId) => {
+          const album = allAlbums.find((item) => item.id === albumId);
+          return (
+            album &&
+            (selectedProfileId === "all" ||
+              album.profileId === selectedProfileId)
+          );
+        }),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allAlbums, customEvents, selectedProfileId]);
+
+  const activeEvent = useMemo(
+    () => visibleEvents.find((event) => event.id === selectedEventId) || null,
+    [selectedEventId, visibleEvents],
+  );
+
+  // Build album list from all profiles / selected event
+  const filteredAlbums = useMemo(() => {
+    return allAlbums
+      .filter((album) => {
+        if (
+          selectedProfileId !== "all" &&
+          album.profileId !== selectedProfileId
+        )
+          return false;
+        if (activeEvent && !activeEvent.albumIds.includes(album.id))
+          return false;
+        return true;
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [activeEvent, allAlbums, selectedProfileId]);
+
+  // Active album metadata
+  const activeAlbum = useMemo(
+    () => filteredAlbums.find((a) => a.id === selectedAlbumId),
+    [filteredAlbums, selectedAlbumId],
+  );
+
+  const searchAlbumIds = useMemo(() => {
+    if (selectedAlbumId) return [selectedAlbumId];
+    if (activeEvent)
+      return activeEvent.albumIds.filter((albumId) =>
+        filteredAlbums.some((album) => album.id === albumId),
+      );
+    return [];
+  }, [activeEvent, filteredAlbums, selectedAlbumId]);
+
+  const canSearch = searchAlbumIds.length > 0;
+  const canBrowse = !!selectedAlbumId;
+
+  // When the album list changes and the selected album is no longer visible, reset
+  useEffect(() => {
+    if (
+      selectedEventId &&
+      !visibleEvents.find((event) => event.id === selectedEventId)
+    ) {
+      setSelectedEventId("");
+    }
+    if (
+      selectedAlbumId &&
+      !filteredAlbums.find((a) => a.id === selectedAlbumId)
+    ) {
+      setSelectedAlbumId("");
+      setPhotos([]);
+      setTotal(0);
+    }
+  }, [filteredAlbums, selectedAlbumId, selectedEventId, visibleEvents]);
+
+  // Load photos when album or bib number changes
+  const fetchPhotos = useCallback(
+    async ({
+      albumId,
+      albumIds,
+      bibNum,
+      newSkip,
+      append,
+    }: {
+      albumId?: string;
+      albumIds?: string[];
+      bibNum: string;
+      newSkip: number;
+      append: boolean;
+    }) => {
+      const ids = (albumIds || []).filter(Boolean);
+      if (!albumId && ids.length === 0) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const resolvedAlbumId = albumId || ids[0];
+        const profileId = profiles.find((p) =>
+          p.albums.find((a) => a.id === resolvedAlbumId),
+        )?.id;
+        const params = new URLSearchParams();
+        if (albumId) params.set("albumId", albumId);
+        if (!albumId && ids.length > 0) params.set("albumId", ids[0]);
+        if (ids.length > 1) params.set("albumIds", ids.join(","));
+        if (profileId) params.set("profileId", profileId);
+        if (bibNum.trim()) {
+          params.set("tagNumber", bibNum.trim());
+        } else {
+          if (!albumId) {
+            setPhotos([]);
+            setTotal(0);
+            setSkip(0);
+            return;
+          }
+          params.set("skip", String(newSkip));
+          params.set("limit", String(LIMIT));
+        }
+        const res = await fetch(
+          `/api/lumepic/album-photos?${params.toString()}`,
+        );
+        if (!res.ok) {
+          const errorText = await res.text();
+          try {
+            const errorJson = JSON.parse(errorText) as {
+              error?: string;
+              message?: string;
+            };
+            throw new Error(errorJson.error || errorJson.message || errorText);
+          } catch {
+            throw new Error(errorText);
+          }
+        }
+        const data = (await res.json()) as {
+          photos: EventAlbumPhoto[];
+          total: number;
+        };
+        setPhotos((prev) => (append ? [...prev, ...data.photos] : data.photos));
+        setTotal(data.total);
+        setSkip(newSkip + data.photos.length);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error loading photos");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [LIMIT, profiles],
+  );
+
+  useEffect(() => {
+    if (bibNumber.trim() && canSearch) {
+      setPhotos([]);
+      setSkip(0);
+      void fetchPhotos({
+        albumId: selectedAlbumId || undefined,
+        albumIds: searchAlbumIds,
+        bibNum: bibNumber,
+        newSkip: 0,
+        append: false,
+      });
+      return;
+    }
+    if (canBrowse) {
+      setPhotos([]);
+      setSkip(0);
+      void fetchPhotos({
+        albumId: selectedAlbumId,
+        bibNum: "",
+        newSkip: 0,
+        append: false,
+      });
+      return;
+    }
+    setPhotos([]);
+    setTotal(0);
+    setSkip(0);
+  }, [
+    bibNumber,
+    canBrowse,
+    canSearch,
+    fetchPhotos,
+    searchAlbumIds,
+    selectedAlbumId,
+  ]);
+
+  // Try to load event-specific folder from IndexedDB when album changes
+  useEffect(() => {
+    const matchedEvent = selectedEventId
+      ? customEvents.find((event) => event.id === selectedEventId)
+      : customEvents.find((e) => e.albumIds.includes(selectedAlbumId));
+    if (!matchedEvent) {
+      setEventDirHandle(null);
+      return;
+    }
+    if (selectedEventId || selectedAlbumId) {
+      getLocalDirectoryHandleForEvent(matchedEvent.id).then((handle) =>
+        setEventDirHandle(handle),
+      );
+    } else {
+      setEventDirHandle(null);
+    }
+  }, [customEvents, selectedAlbumId, selectedEventId]);
+
+  const activeDirHandle = eventDirHandle || localDirHandle || null;
+  const activeDirLabel = activeDirHandle?.name || null;
+  const activeScopeLabel = activeEvent?.name || activeAlbum?.title || null;
+
+  const handleResetSearch = () => {
+    setBibInput("");
+    setBibNumber("");
+  };
+
+  const handleSelectEvent = (eventId: string) => {
+    setSelectedEventId(eventId);
+    setSelectedAlbumId("");
+    setPhotos([]);
+    setTotal(0);
+    setSkip(0);
+    handleResetSearch();
+  };
+
+  const handleSelectAlbum = (albumId: string) => {
+    setSelectedAlbumId(albumId);
+    setPhotos([]);
+    setTotal(0);
+    setSkip(0);
+    handleResetSearch();
+    if (albumId) {
+      const matchedEvent = customEvents.find((event) =>
+        event.albumIds.includes(albumId),
+      );
+      if (matchedEvent) {
+        setSelectedEventId(matchedEvent.id);
+      }
+    }
+  };
+
+  const handleCopy = (
+    fileName: string,
+    photoId: string,
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(fileName);
+    setCopiedId(photoId);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  const handleSelectFolder = async () => {
+    setSelectingFolder(true);
+    try {
+      const handle = await (window as any).showDirectoryPicker({
+        mode: "read",
+      });
+      if (handle) {
+        const matchedEvent = selectedEventId
+          ? customEvents.find((event) => event.id === selectedEventId)
+          : customEvents.find((event) =>
+              event.albumIds.includes(selectedAlbumId),
+            );
+        if (matchedEvent) {
+          await setLocalDirectoryHandleForEvent(matchedEvent.id, handle);
+        }
+        setEventDirHandle(handle);
+        // Reset cached URLs so they reload with the new folder
+        setResolvedLocalUrls((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((k) => {
+            if (k.startsWith("evtphoto_")) delete next[k];
+          });
+          return next;
+        });
+      }
+    } catch {
+      // User cancelled
+    } finally {
+      setSelectingFolder(false);
+    }
+  };
+
+  const handleBibSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSearch) return;
+    setBibNumber(bibInput);
+  };
+
+  const hasMore = !bibNumber.trim() && photos.length < total;
+  const showSelectionPrompt = !selectedAlbumId && !selectedEventId;
+
+  return (
+    <>
+      <section className="panel" style={{ marginBottom: "18px" }}>
+        <header
+          className="panel-header"
+          style={{
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: "16px",
+            marginBottom: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <h2>{t.eventPhotosTitle}</h2>
+              <p
+                style={{
+                  color: "var(--muted)",
+                  fontSize: "0.85rem",
+                  margin: "4px 0 0 0",
+                }}
+              >
+                {t.eventPhotosDesc}
+              </p>
+            </div>
+            <Camera size={22} style={{ color: "var(--muted)" }} />
+          </div>
+
+          <div className="gallery-filter-bar">
+            {/* Profile filter */}
+            {profiles.length > 1 && (
+              <div className="filter-select-wrap">
+                <UserRound size={14} className="select-icon" />
+                <select
+                  value={selectedProfileId}
+                  onChange={(e) => {
+                    setSelectedProfileId(e.target.value);
+                    setSelectedEventId("");
+                    setSelectedAlbumId("");
+                    setPhotos([]);
+                    setTotal(0);
+                    setSkip(0);
+                    handleResetSearch();
+                  }}
+                >
+                  <option value="all">
+                    {language === "es" ? "Todos los perfiles" : "All profiles"}
+                  </option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {visibleEvents.length > 0 && (
+              <div className="filter-select-wrap" style={{ flex: 1.4 }}>
+                <Calendar size={14} className="select-icon" />
+                <select
+                  value={selectedEventId}
+                  onChange={(e) => handleSelectEvent(e.target.value)}
+                >
+                  <option value="">
+                    {language === "es"
+                      ? "Todos los eventos publicados"
+                      : "All published events"}
+                  </option>
+                  {visibleEvents.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Album selector */}
+            <div className="filter-select-wrap" style={{ flex: 2 }}>
+              <Album size={14} className="select-icon" />
+              <select
+                value={selectedAlbumId}
+                onChange={(e) => handleSelectAlbum(e.target.value)}
+              >
+                <option value="">
+                  {activeEvent
+                    ? language === "es"
+                      ? "Todo el evento (buscar por dorsal)"
+                      : "Whole event (bib search)"
+                    : t.selectAlbumToBrowse}
+                </option>
+                {filteredAlbums.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.title}
+                    {profiles.length > 1 ? ` — ${a.profileLabel}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Bib number search */}
+          {(selectedAlbumId || selectedEventId) && (
+            <form
+              onSubmit={handleBibSearch}
+              style={{ display: "flex", gap: "8px", alignItems: "center" }}
+            >
+              <div className="gallery-search-wrap" style={{ flex: 1 }}>
+                <Search size={16} className="search-icon" />
+                <input
+                  type="text"
+                  placeholder={t.bibSearchPlaceholder}
+                  value={bibInput}
+                  onChange={(e) => setBibInput(e.target.value)}
+                />
+                {bibInput && (
+                  <button
+                    className="clear-btn"
+                    type="button"
+                    onClick={handleResetSearch}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  background: "var(--accent, #6366f1)",
+                  color: "white",
+                  border: "none",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  whiteSpace: "nowrap",
+                }}
+                disabled={loading || !bibInput.trim() || !canSearch}
+              >
+                {t.bibSearch}
+              </button>
+              {bibNumber && (
+                <button
+                  type="button"
+                  className="text-link-btn"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--ink)",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    padding: 0,
+                    whiteSpace: "nowrap",
+                    fontSize: "0.82rem",
+                  }}
+                  onClick={handleResetSearch}
+                >
+                  {t.clearBibSearch}
+                </button>
+              )}
+            </form>
+          )}
+
+          {/* Local folder row */}
+          {(selectedAlbumId || selectedEventId) && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                borderTop: "1px solid var(--line-soft)",
+                paddingTop: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                <FolderOpen
+                  size={14}
+                  style={{ color: "var(--muted)", flexShrink: 0 }}
+                />
+                <span
+                  style={{
+                    fontSize: "0.82rem",
+                    color: activeDirHandle ? "var(--ink)" : "var(--muted)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {activeDirHandle
+                    ? `${language === "es" ? "Carpeta vinculada" : "Folder linked"}${activeDirLabel ? `: ${activeDirLabel}` : ""}`
+                    : language === "es"
+                      ? "Sin carpeta local vinculada"
+                      : "No local folder linked"}
+                </span>
+              </div>
+              {activeScopeLabel && (
+                <span
+                  style={{
+                    fontSize: "0.78rem",
+                    color: "var(--muted)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {language === "es" ? "Ámbito" : "Scope"}: {activeScopeLabel}
+                </span>
+              )}
+              <button
+                onClick={handleSelectFolder}
+                disabled={selectingFolder}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  background: "var(--paper-2)",
+                  border: "1px solid var(--line)",
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  color: "var(--ink)",
+                }}
+              >
+                <FolderOpen
+                  size={12}
+                  style={{ verticalAlign: "middle", marginRight: "5px" }}
+                />
+                {selectingFolder
+                  ? language === "es"
+                    ? "Abriendo..."
+                    : "Opening..."
+                  : activeDirHandle
+                    ? language === "es"
+                      ? "Cambiar carpeta"
+                      : "Change folder"
+                    : language === "es"
+                      ? "Vincular carpeta local"
+                      : "Link local folder"}
+              </button>
+            </div>
+          )}
+
+          {/* Status bar */}
+          {(selectedAlbumId || selectedEventId) && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderTop: "1px solid var(--line-soft)",
+                paddingTop: "10px",
+                fontSize: "0.82rem",
+                color: "var(--muted)",
+              }}
+            >
+              {bibNumber ? (
+                <span>
+                  {photos.length > 0
+                    ? `${t.bibResultsLabel} #${bibNumber}: ${photos.length} ${t.eventPhotosCount}${activeScopeLabel ? ` — ${activeScopeLabel}` : ""}`
+                    : loading
+                      ? t.searchingBib
+                      : t.bibNotFound}
+                </span>
+              ) : (
+                <span>
+                  {loading && photos.length === 0
+                    ? t.loadingPhotos
+                    : `${photos.length}${total > photos.length ? ` / ${total}` : ""} ${t.eventPhotosCount}${activeAlbum ? ` — ${activeAlbum.title}` : ""}`}
+                </span>
+              )}
+            </div>
+          )}
+        </header>
+      </section>
+
+      {showSelectionPrompt ? (
+        <section
+          className="panel"
+          style={{ padding: "64px 20px", textAlign: "center" }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              width: "64px",
+              height: "64px",
+              borderRadius: "50%",
+              background: "var(--paper-2)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "16px",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <Camera size={28} style={{ color: "var(--muted)" }} />
+          </div>
+          <h3>
+            {language === "es"
+              ? "Selecciona un evento o álbum"
+              : "Select an event or album"}
+          </h3>
+          <p
+            style={{
+              color: "var(--muted)",
+              maxWidth: "420px",
+              margin: "8px auto 0 auto",
+              fontSize: "0.92rem",
+            }}
+          >
+            {language === "es"
+              ? "Puedes navegar por álbum o buscar un dorsal sobre todo el evento publicado."
+              : "You can browse one album or search a bib across the whole published event."}
+          </p>
+        </section>
+      ) : error ? (
+        <section
+          className="panel"
+          style={{ padding: "32px 20px", textAlign: "center" }}
+        >
+          <p style={{ color: "var(--red, #ef4444)", fontWeight: 600 }}>
+            {error}
+          </p>
+          <button
+            className="text-button"
+            onClick={() =>
+              void fetchPhotos({
+                albumId: selectedAlbumId || undefined,
+                albumIds: searchAlbumIds,
+                bibNum: bibNumber,
+                newSkip: 0,
+                append: false,
+              })
+            }
+            style={{ marginTop: "12px" }}
+          >
+            {language === "es" ? "Reintentar" : "Retry"}
+          </button>
+        </section>
+      ) : photos.length === 0 && !loading ? (
+        <section
+          className="panel"
+          style={{ padding: "64px 20px", textAlign: "center" }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              width: "64px",
+              height: "64px",
+              borderRadius: "50%",
+              background: "var(--paper-2)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "16px",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <Search size={28} style={{ color: "var(--muted)" }} />
+          </div>
+          <h3>
+            {bibNumber
+              ? t.bibNotFound
+              : language === "es"
+                ? "Sin fotos"
+                : "No photos"}
+          </h3>
+          {bibNumber && (
+            <button
+              className="text-link-btn"
+              style={{
+                marginTop: "12px",
+                background: "none",
+                border: "none",
+                color: "var(--ink)",
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+              onClick={handleResetSearch}
+            >
+              {t.clearBibSearch}
+            </button>
+          )}
+        </section>
+      ) : (
+        <>
+          <section className="gallery-grid">
+            {photos.map((photo, idx) => (
+              <EventPhotoCard
+                key={`${photo.id}-${idx}`}
+                photo={photo}
+                dirHandle={activeDirHandle}
+                language={language}
+                copiedId={copiedId}
+                onCopy={handleCopy}
+                resolvedLocalUrls={resolvedLocalUrls}
+                setResolvedLocalUrls={setResolvedLocalUrls}
+                permissionRetry={permissionRetry ?? 0}
+              />
+            ))}
+          </section>
+
+          {loading && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                padding: "24px",
+              }}
+            >
+              <div
+                className="pulse"
+                style={{
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "50%",
+                  background: "var(--accent, #6366f1)",
+                }}
+              />
+            </div>
+          )}
+
+          {hasMore && !loading && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                padding: "24px",
+              }}
+            >
+              <button
+                onClick={() =>
+                  void fetchPhotos({
+                    albumId: selectedAlbumId,
+                    bibNum: "",
+                    newSkip: skip,
+                    append: true,
+                  })
+                }
+                style={{
+                  padding: "10px 28px",
+                  borderRadius: "8px",
+                  background: "var(--paper-2)",
+                  border: "1px solid var(--line)",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "0.88rem",
+                  color: "var(--ink)",
+                }}
+              >
+                {t.loadMore}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
 
 function ClientsDashboard({
   clients,
@@ -4547,8 +7610,11 @@ function ClientsDashboard({
   onSaveClient: (key: string) => void;
   language?: Language;
 }) {
-  const selectedClient = clients.find((c) => c.key === selectedClientKey) || clients[0];
-  const localData = selectedClient ? clientsLocalData[selectedClient.key] : undefined;
+  const selectedClient =
+    clients.find((c) => c.key === selectedClientKey) || clients[0];
+  const localData = selectedClient
+    ? clientsLocalData[selectedClient.key]
+    : undefined;
   const isEditing = selectedClient && editingClientKey === selectedClient.key;
   const t = TRANSLATIONS[language];
 
@@ -4563,8 +7629,12 @@ function ClientsDashboard({
   }, [selectedClientKey]);
 
   const totalClientsCount = clients.length;
-  const totalSpentAllClients = clients.reduce((acc, c) => acc + c.totalSpent, 0);
-  const avgSpentPerClient = totalClientsCount > 0 ? totalSpentAllClients / totalClientsCount : 0;
+  const totalSpentAllClients = clients.reduce(
+    (acc, c) => acc + c.totalSpent,
+    0,
+  );
+  const avgSpentPerClient =
+    totalClientsCount > 0 ? totalSpentAllClients / totalClientsCount : 0;
 
   const startEditing = () => {
     if (!selectedClient) return;
@@ -4686,10 +7756,18 @@ function ClientsDashboard({
               />
             </div>
             <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-              <button className="text-button primary" onClick={handleSave} style={{ flex: 1 }}>
+              <button
+                className="text-button primary"
+                onClick={handleSave}
+                style={{ flex: 1 }}
+              >
                 {t.save}
               </button>
-              <button className="text-button" onClick={() => setEditingClientKey(null)} style={{ flex: 1 }}>
+              <button
+                className="text-button"
+                onClick={() => setEditingClientKey(null)}
+                style={{ flex: 1 }}
+              >
                 {t.cancel}
               </button>
             </div>
@@ -4703,7 +7781,11 @@ function ClientsDashboard({
                   href={getInstagramLink(localData.instagram)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ color: "var(--ink)", fontWeight: "600", textDecoration: "underline" }}
+                  style={{
+                    color: "var(--ink)",
+                    fontWeight: "600",
+                    textDecoration: "underline",
+                  }}
                 >
                   @{localData.instagram.replace("@", "")}
                 </a>
@@ -4713,15 +7795,32 @@ function ClientsDashboard({
             </div>
             <div>
               <span>{t.notesLabel}</span>
-              <strong style={{ whiteSpace: "pre-wrap", textAlign: "right" }}>{localData?.notes || "—"}</strong>
+              <strong style={{ whiteSpace: "pre-wrap", textAlign: "right" }}>
+                {localData?.notes || "—"}
+              </strong>
             </div>
             <div>
               <span>{t.totalPurchases}</span>
               <strong>{selectedClient.salesCount}</strong>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", borderBottom: "none" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "stretch",
+                borderBottom: "none",
+              }}
+            >
               <span style={{ marginBottom: "8px" }}>{t.purchaseHistory}</span>
-              <div style={{ display: "grid", gap: "8px", maxHeight: "200px", overflowY: "auto", paddingRight: "4px" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gap: "8px",
+                  maxHeight: "200px",
+                  overflowY: "auto",
+                  paddingRight: "4px",
+                }}
+              >
                 {selectedClient.sales.map((sale) => (
                   <div
                     key={sale.saleId}
@@ -4736,9 +7835,14 @@ function ClientsDashboard({
                     }}
                   >
                     <div style={{ display: "grid", gap: "2px" }}>
-                      <strong style={{ fontSize: "0.85rem" }}>{sale.album}</strong>
-                      <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                        {formatDate(sale.date, language)} - {sale.photographerName}
+                      <strong style={{ fontSize: "0.85rem" }}>
+                        {sale.album}
+                      </strong>
+                      <span
+                        style={{ fontSize: "0.75rem", color: "var(--muted)" }}
+                      >
+                        {formatDate(sale.date, language)} -{" "}
+                        {sale.photographerName}
                       </span>
                     </div>
                     <strong>{money.format(sale.total)}</strong>
@@ -4746,7 +7850,11 @@ function ClientsDashboard({
                 ))}
               </div>
             </div>
-            <button className="text-button" onClick={startEditing} style={{ width: "100%", marginTop: "12px" }}>
+            <button
+              className="text-button"
+              onClick={startEditing}
+              style={{ width: "100%", marginTop: "12px" }}
+            >
               {t.editProfile}
             </button>
           </div>
@@ -4755,7 +7863,10 @@ function ClientsDashboard({
     );
   };
 
-  const isBottomSheetOpen = isBottomSheetExpanded && selectedClientKey !== null && selectedClientKey !== "";
+  const isBottomSheetOpen =
+    isBottomSheetExpanded &&
+    selectedClientKey !== null &&
+    selectedClientKey !== "";
 
   return (
     <>
@@ -4782,7 +7893,9 @@ function ClientsDashboard({
             <TrendingUp size={20} />
           </header>
           <strong>{money.format(avgSpentPerClient)}</strong>
-          <span>{language === "es" ? "Promedio por cliente" : "Average per client"}</span>
+          <span>
+            {language === "es" ? "Promedio por cliente" : "Average per client"}
+          </span>
         </article>
       </section>
 
@@ -4809,14 +7922,19 @@ function ClientsDashboard({
                 {clients.map((client) => {
                   const cLocal = clientsLocalData[client.key];
                   const displayName = cLocal?.customName || client.name;
-                  const isSelected = selectedClientKey ? client.key === selectedClientKey : client.key === clients[0]?.key;
+                  const isSelected = selectedClientKey
+                    ? client.key === selectedClientKey
+                    : client.key === clients[0]?.key;
                   return (
                     <tr
                       key={client.key}
                       style={isSelected ? { background: "var(--paper-2)" } : {}}
                     >
                       <td data-label={t.clientLabel}>
-                        <button className="sale-button" onClick={() => onSelectClient(client.key)}>
+                        <button
+                          className="sale-button"
+                          onClick={() => onSelectClient(client.key)}
+                        >
                           <strong>{displayName}</strong>
                           <span>{client.email || t.noEmail}</span>
                         </button>
@@ -4839,11 +7957,24 @@ function ClientsDashboard({
                             @{cLocal.instagram.replace("@", "")}
                           </a>
                         ) : (
-                          <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>—</span>
+                          <span
+                            style={{
+                              color: "var(--muted)",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            —
+                          </span>
                         )}
                       </td>
-                      <td data-label={language === "es" ? "Compras" : "Purchases"}>{client.salesCount}</td>
-                      <td data-label={t.totalPurchased}>{money.format(client.totalSpent)}</td>
+                      <td
+                        data-label={language === "es" ? "Compras" : "Purchases"}
+                      >
+                        {client.salesCount}
+                      </td>
+                      <td data-label={t.totalPurchased}>
+                        {money.format(client.totalSpent)}
+                      </td>
                     </tr>
                   );
                 })}
@@ -4856,7 +7987,13 @@ function ClientsDashboard({
           {selectedClient ? (
             renderDetailContent()
           ) : (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
+            <div
+              style={{
+                textAlign: "center",
+                padding: "40px 20px",
+                color: "var(--muted)",
+              }}
+            >
               {t.selectClientPrompt}
             </div>
           )}
@@ -4865,13 +8002,25 @@ function ClientsDashboard({
 
       {/* Mobile Peek Bar */}
       {selectedClientKey && selectedClient && !isBottomSheetExpanded && (
-        <div className="mobile-peek-bar" onClick={() => setIsBottomSheetExpanded(true)}>
+        <div
+          className="mobile-peek-bar"
+          onClick={() => setIsBottomSheetExpanded(true)}
+        >
           <div className="mobile-peek-info">
             <strong>{localData?.customName || selectedClient.name}</strong>
-            <span>{t.totalPurchased}: {money.format(selectedClient.totalSpent)}</span>
+            <span>
+              {t.totalPurchased}: {money.format(selectedClient.totalSpent)}
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button className="text-button primary compact" style={{ padding: "6px 12px", fontSize: "0.8rem", borderRadius: "999px" }}>
+            <button
+              className="text-button primary compact"
+              style={{
+                padding: "6px 12px",
+                fontSize: "0.8rem",
+                borderRadius: "999px",
+              }}
+            >
               {t.viewDetail}
             </button>
             <button
@@ -4889,7 +8038,7 @@ function ClientsDashboard({
                 alignItems: "center",
                 justifyContent: "center",
                 padding: "6px",
-                borderRadius: "50%"
+                borderRadius: "50%",
               }}
             >
               <X size={14} />
@@ -4900,8 +8049,14 @@ function ClientsDashboard({
 
       {/* Mobile BottomSheet */}
       {isBottomSheetOpen && selectedClient && (
-        <div className="mobile-bottomsheet-backdrop" onClick={() => setIsBottomSheetExpanded(false)}>
-          <div className="mobile-bottomsheet" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="mobile-bottomsheet-backdrop"
+          onClick={() => setIsBottomSheetExpanded(false)}
+        >
+          <div
+            className="mobile-bottomsheet"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mobile-bottomsheet-drag-handle" />
             <div className="mobile-bottomsheet-close-btn">
               <button
@@ -4915,7 +8070,7 @@ function ClientsDashboard({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: "4px"
+                  padding: "4px",
                 }}
               >
                 <X size={20} />
@@ -4941,6 +8096,7 @@ interface ProcessedImage {
     rect: { x: number; y: number; w: number; h: number };
     bodyRect?: { x: number; y: number; w: number; h: number };
     isPrimary?: boolean;
+    faceReal?: boolean;
   }>;
   totalFaces: number;
   // undefined = no evaluado todavía; true/false = resultado del chequeo de ojos cerrados.
@@ -4951,12 +8107,25 @@ interface ProcessedImage {
 // EAR = (promedio de distancias verticales del párpado) / (distancia horizontal del ojo).
 // Por debajo de ~0.20 el ojo se considera cerrado.
 const EYE_CLOSED_THRESHOLD = 0.2;
-const RIGHT_EYE_EAR = { h: [33, 133], v: [[159, 145], [158, 153]] };
-const LEFT_EYE_EAR = { h: [362, 263], v: [[386, 374], [385, 380]] };
+const DEBUG_CULLING = false;
+const RIGHT_EYE_EAR = {
+  h: [33, 133],
+  v: [
+    [159, 145],
+    [158, 153],
+  ],
+};
+const LEFT_EYE_EAR = {
+  h: [362, 263],
+  v: [
+    [386, 374],
+    [385, 380],
+  ],
+};
 
 function eyeAspectRatio(
   keypoints: Array<{ x: number; y: number }>,
-  idx: { h: number[]; v: number[][] }
+  idx: { h: number[]; v: number[][] },
 ): number {
   const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.hypot(a.x - b.x, a.y - b.y);
@@ -4988,7 +8157,8 @@ function formatDuration(ms: number): string {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (h > 0)
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
@@ -4996,33 +8166,40 @@ function varianceOfLaplacian(imageData: ImageData): number {
   const width = imageData.width;
   const height = imageData.height;
   const data = imageData.data;
-  
+
   // 1. Convertir a escala de grises
   const gray = new Uint8ClampedArray(width * height);
   for (let i = 0; i < data.length; i += 4) {
-    gray[i / 4] = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+    gray[i / 4] = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
   }
-  
+
   // 2. Suavizado con filtro de caja 3x3 de 3 pasadas usando buffers separados
   // IMPORTANTE: Debemos mantener el array 'gray' intacto para calcular el Laplaciano original.
   const buf1 = new Uint8ClampedArray(gray);
   const buf2 = new Uint8ClampedArray(width * height);
   let inArr = buf1;
   let outArr = buf2;
-  
+
   for (let pass = 0; pass < 3; pass++) {
     for (let y = 1; y < height - 1; y++) {
       const rowOffset = y * width;
       const prevRowOffset = rowOffset - width;
       const nextRowOffset = rowOffset + width;
-      
+
       for (let x = 1; x < width - 1; x++) {
         const i = rowOffset + x;
-        outArr[i] = Math.round((
-          inArr[prevRowOffset + x - 1] + inArr[prevRowOffset + x] + inArr[prevRowOffset + x + 1] +
-          inArr[rowOffset + x - 1]     + inArr[rowOffset + x]     + inArr[rowOffset + x + 1] +
-          inArr[nextRowOffset + x - 1] + inArr[nextRowOffset + x] + inArr[nextRowOffset + x + 1]
-        ) / 9);
+        outArr[i] = Math.round(
+          (inArr[prevRowOffset + x - 1] +
+            inArr[prevRowOffset + x] +
+            inArr[prevRowOffset + x + 1] +
+            inArr[rowOffset + x - 1] +
+            inArr[rowOffset + x] +
+            inArr[rowOffset + x + 1] +
+            inArr[nextRowOffset + x - 1] +
+            inArr[nextRowOffset + x] +
+            inArr[nextRowOffset + x + 1]) /
+            9,
+        );
       }
     }
     // Intercambiar buffers
@@ -5040,15 +8217,25 @@ function varianceOfLaplacian(imageData: ImageData): number {
     const rowOffset = y * width;
     const prevRow = rowOffset - width;
     const nextRow = rowOffset + width;
-    
+
     for (let x = 2; x < width - 2; x++) {
       const i = rowOffset + x;
-      
+
       // Original (usando el array 'gray' que ahora se mantiene perfectamente pristine)
-      laplacian[i] = gray[prevRow + x] + gray[nextRow + x] + gray[i - 1] + gray[i + 1] - (4 * gray[i]);
+      laplacian[i] =
+        gray[prevRow + x] +
+        gray[nextRow + x] +
+        gray[i - 1] +
+        gray[i + 1] -
+        4 * gray[i];
 
       // Difuminado
-      laplacianBlur[i] = grayBlur[prevRow + x] + grayBlur[nextRow + x] + grayBlur[i - 1] + grayBlur[i + 1] - (4 * grayBlur[i]);
+      laplacianBlur[i] =
+        grayBlur[prevRow + x] +
+        grayBlur[nextRow + x] +
+        grayBlur[i - 1] +
+        grayBlur[i + 1] -
+        4 * grayBlur[i];
     }
   }
 
@@ -5083,7 +8270,7 @@ function varianceOfLaplacian(imageData: ImageData): number {
         const rowOffset = by * width;
         for (let bx = x; bx < x + blockSize; bx++) {
           const idx = rowOffset + bx;
-          
+
           const diff = laplacian[idx] - mean;
           sqDiffSum += diff * diff;
 
@@ -5132,7 +8319,7 @@ function varianceOfLaplacian(imageData: ImageData): number {
         const rowOffset = y * width;
         for (let x = 2; x < width - 2; x++) {
           const idx = rowOffset + x;
-          
+
           const diff = laplacian[idx] - mean;
           sqDiffSum += diff * diff;
 
@@ -5143,7 +8330,7 @@ function varianceOfLaplacian(imageData: ImageData): number {
 
       const laplacianVariance = sqDiffSum / count;
       const blurVariance = sqDiffSumBlur / count;
-      
+
       if (laplacianVariance < 3.0) return 1.0;
       return laplacianVariance / (blurVariance + 0.05);
     }
@@ -5159,8 +8346,8 @@ function varianceOfLaplacian(imageData: ImageData): number {
   for (let i = 0; i < topBlocks; i++) {
     maxVariance += blockVariances[i];
   }
-  
-  return topBlocks > 0 ? (maxVariance / topBlocks) : 0;
+
+  return topBlocks > 0 ? maxVariance / topBlocks : 0;
 }
 
 interface FaceCropCanvasProps {
@@ -5196,17 +8383,7 @@ function FaceCropCanvas({ imageUrl, rect }: FaceCropCanvasProps) {
       ctx.fillRect(0, 0, 160, 160);
 
       // Draw the cropped face keeping a perfect 1:1 square aspect ratio
-      ctx.drawImage(
-        img,
-        sX,
-        sY,
-        maxDim,
-        maxDim,
-        0,
-        0,
-        160,
-        160
-      );
+      ctx.drawImage(img, sX, sY, maxDim, maxDim, 0, 0, 160, 160);
     };
   }, [imageUrl, rect]);
 
@@ -5220,7 +8397,7 @@ function FaceCropCanvas({ imageUrl, rect }: FaceCropCanvasProps) {
         border: "2px solid rgba(255, 255, 255, 0.15)",
         boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
         background: "#000",
-        display: "block"
+        display: "block",
       }}
     />
   );
@@ -5240,13 +8417,22 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   const [files, setFiles] = useState<File[]>([]);
   const [dirHandle, setDirHandle] = useState<any>(null);
   const [processedImages, setProcessedImages] = useState<ProcessedImage[]>([]);
-  const [analyzingProgress, setAnalyzingProgress] = useState<string | null>(null);
+  const [analyzingProgress, setAnalyzingProgress] = useState<string | null>(
+    null,
+  );
   const [analyzingPercent, setAnalyzingPercent] = useState(0);
 
   const [currentThreshold, setCurrentThreshold] = useState(75);
-  const [currentFilter, setCurrentFilter] = useState<"all" | "sharp" | "blurry">("all");
+  const [currentFilter, setCurrentFilter] = useState<
+    "all" | "sharp" | "blurry"
+  >("all");
   // Fotos aceptadas manualmente esta sesión (bypass del umbral, por nombre de archivo).
-  const [acceptedOverrides, setAcceptedOverrides] = useState<Set<string>>(new Set());
+  const [acceptedOverrides, setAcceptedOverrides] = useState<Set<string>>(
+    new Set(),
+  );
+  const [primaryOverrides, setPrimaryOverrides] = useState<Map<string, number>>(
+    new Map(),
+  );
   // Detección de ojos cerrados (FaceMesh, bajo demanda). Apagado por defecto.
   const [eyeCheckEnabled, setEyeCheckEnabled] = useState(false);
   const [faceMeshDetector, setFaceMeshDetector] = useState<any>(null);
@@ -5273,42 +8459,64 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   // Script Modal state
   const [scriptOpen, setScriptOpen] = useState(false);
-  const [scriptBlurryFiles, setScriptBlurryFiles] = useState<ProcessedImage[]>([]);
+  const [scriptBlurryFiles, setScriptBlurryFiles] = useState<ProcessedImage[]>(
+    [],
+  );
   const [copied, setCopied] = useState(false);
 
   // Directory access native check
-  const hasDirectoryAccess = typeof window !== "undefined" && !!(window as any).showDirectoryPicker;
+  const hasDirectoryAccess =
+    typeof window !== "undefined" && !!(window as any).showDirectoryPicker;
 
   const t = TRANSLATIONS[language];
 
+  const effectiveScore = useCallback(
+    (img: ProcessedImage) => {
+      const ov = primaryOverrides.get(img.file.name);
+      return ov != null && img.allFaces?.[ov]
+        ? img.allFaces[ov].score
+        : img.score;
+    },
+    [primaryOverrides],
+  );
+
   // ¿La foto se acepta? Override manual gana siempre; si no, debe pasar el umbral de nitidez
   // y (cuando el chequeo de ojos está activo) no tener los ojos cerrados.
-  const isImageAccepted = useCallback((img: ProcessedImage) => {
-    if (acceptedOverrides.has(img.file.name)) return true;
-    const rel = mapRawScoreToPercentage(img.score);
-    if (rel < currentThreshold) return false;
-    if (eyeCheckEnabled && img.eyesClosed) return false;
-    return true;
-  }, [acceptedOverrides, currentThreshold, eyeCheckEnabled]);
+  const isImageAccepted = useCallback(
+    (img: ProcessedImage) => {
+      if (acceptedOverrides.has(img.file.name)) return true;
+      const rel = mapRawScoreToPercentage(effectiveScore(img));
+      if (rel < currentThreshold) return false;
+      if (eyeCheckEnabled && img.eyesClosed) return false;
+      return true;
+    },
+    [acceptedOverrides, currentThreshold, effectiveScore, eyeCheckEnabled],
+  );
 
   // Optimized Stats & Filtered Lists (Lexically declared at the top)
   // Durante el análisis se mantiene el orden de llegada (estable, append-only); al terminar se
   // ordena por nitidez. Esto evita que la galería salte y que el modal abierto cambie de foto.
   const sorted = useMemo(
-    () => (isAnalyzing ? processedImages : [...processedImages].sort((a, b) => b.score - a.score)),
-    [processedImages, isAnalyzing]
+    () =>
+      isAnalyzing
+        ? processedImages
+        : [...processedImages].sort((a, b) => b.score - a.score),
+    [processedImages, isAnalyzing],
   );
 
   // Foto abierta en el modal, resuelta por su clave estable (no por índice).
   const activeModalImg = useMemo(
-    () => (activeModalKey ? sorted.find(img => img.file.name === activeModalKey) ?? null : null),
-    [activeModalKey, sorted]
+    () =>
+      activeModalKey
+        ? (sorted.find((img) => img.file.name === activeModalKey) ?? null)
+        : null,
+    [activeModalKey, sorted],
   );
 
   const { sharpCount, blurryCount } = useMemo(() => {
     let sharp = 0;
     let blurry = 0;
-    sorted.forEach(img => {
+    sorted.forEach((img) => {
       if (isImageAccepted(img)) sharp++;
       else blurry++;
     });
@@ -5316,7 +8524,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   }, [sorted, isImageAccepted]);
 
   const displayed = useMemo(() => {
-    return sorted.filter(img => {
+    return sorted.filter((img) => {
       const isSharp = isImageAccepted(img);
       if (currentFilter === "sharp") return isSharp;
       if (currentFilter === "blurry") return !isSharp;
@@ -5328,7 +8536,10 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   useEffect(() => {
     if (!isAnalyzing || analyzeStart == null) return;
     setElapsedMs(performance.now() - analyzeStart);
-    const id = setInterval(() => setElapsedMs(performance.now() - analyzeStart), 250);
+    const id = setInterval(
+      () => setElapsedMs(performance.now() - analyzeStart),
+      250,
+    );
     return () => clearInterval(id);
   }, [isAnalyzing, analyzeStart]);
 
@@ -5340,13 +8551,13 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
     const initModel = async () => {
       const anyWindow = window as any;
-      
+
       // Helper to check if model is loaded globally
       const checkAndLoad = async () => {
         if (anyWindow.cocoSsd) {
           try {
             const loadedDetector = await anyWindow.cocoSsd.load({
-              modelUrl: "/model/model.json"
+              modelUrl: "/model/model.json",
             });
             if (active) {
               setDetector(loadedDetector);
@@ -5358,11 +8569,14 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
               try {
                 const fd = await anyWindow.faceDetection.createDetector(
                   anyWindow.faceDetection.SupportedModels.MediaPipeFaceDetector,
-                  { runtime: "tfjs", maxFaces: 25 }
+                  { runtime: "tfjs", maxFaces: 25 },
                 );
                 if (active) setFaceDetector(fd);
               } catch (fe) {
-                console.warn("Detector de caras no disponible, usando heurística:", fe);
+                console.warn(
+                  "Detector de caras no disponible, usando heurística:",
+                  fe,
+                );
               }
             }
 
@@ -5370,7 +8584,11 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           } catch (e) {
             console.error("Error loading cocoSsd model:", e);
             if (active) {
-              setModelError(language === "es" ? "Error al inicializar el detector de objetos AI" : "Error initializing AI object detector");
+              setModelError(
+                language === "es"
+                  ? "Error al inicializar el detector de objetos AI"
+                  : "Error initializing AI object detector",
+              );
               setIsLoadingModel(false);
             }
             return true; // stop polling
@@ -5390,7 +8608,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           clearInterval(interval);
           return;
         }
-        
+
         if (await checkAndLoad()) {
           clearInterval(interval);
           return;
@@ -5398,22 +8616,32 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
         if (retries > 30) {
           clearInterval(interval);
-          
+
           // 3. Fallback: Dynamic script insertion if still not loaded
-          console.warn("Global cocoSsd not found, attempting dynamic insertion fallback...");
-          const loadScript = (src: string, id: string, globalVarName?: string) => {
+          console.warn(
+            "Global cocoSsd not found, attempting dynamic insertion fallback...",
+          );
+          const loadScript = (
+            src: string,
+            id: string,
+            globalVarName?: string,
+          ) => {
             return new Promise<void>((resolve, reject) => {
               if (globalVarName && anyWindow[globalVarName]) {
                 resolve();
                 return;
               }
-              const existingScript = document.getElementById(id) as HTMLScriptElement;
+              const existingScript = document.getElementById(
+                id,
+              ) as HTMLScriptElement;
               if (existingScript) {
                 if (anyWindow[globalVarName || ""]) {
                   resolve();
                 } else {
                   existingScript.addEventListener("load", () => resolve());
-                  existingScript.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)));
+                  existingScript.addEventListener("error", () =>
+                    reject(new Error(`Failed to load ${src}`)),
+                  );
                 }
                 return;
               }
@@ -5428,19 +8656,38 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           };
 
           try {
-            await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs", "tfjs-script", "tf");
-            await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd", "cocossd-script", "cocoSsd");
+            await loadScript(
+              "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs",
+              "tfjs-script",
+              "tf",
+            );
+            await loadScript(
+              "https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd",
+              "cocossd-script",
+              "cocoSsd",
+            );
             try {
-              await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection", "facedetection-script", "faceDetection");
+              await loadScript(
+                "https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection",
+                "facedetection-script",
+                "faceDetection",
+              );
             } catch (fe) {
-              console.warn("No se pudo cargar el script de face-detection:", fe);
+              console.warn(
+                "No se pudo cargar el script de face-detection:",
+                fe,
+              );
             }
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 200));
             await checkAndLoad();
           } catch (err) {
             console.error("Scripts dynamic load fallback failed:", err);
             if (active) {
-              setModelError(language === "es" ? "Error al descargar los scripts de AI" : "Error downloading AI scripts");
+              setModelError(
+                language === "es"
+                  ? "Error al descargar los scripts de AI"
+                  : "Error downloading AI scripts",
+              );
               setIsLoadingModel(false);
             }
           }
@@ -5466,12 +8713,14 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   // Dynamic Lightbox overlay drawer
   const modalImgRef = useRef<HTMLImageElement>(null);
-  const [faceBoxes, setFaceBoxes] = useState<Array<{
-    faceStyle: React.CSSProperties;
-    bodyStyle: React.CSSProperties | null;
-    label: string;
-    isGreen: boolean;
-  }>>([]);
+  const [faceBoxes, setFaceBoxes] = useState<
+    Array<{
+      faceStyle: React.CSSProperties;
+      bodyStyle: React.CSSProperties | null;
+      label: string;
+      isGreen: boolean;
+    }>
+  >([]);
 
   const updateModalOverlays = useCallback(() => {
     if (!activeModalImg) return;
@@ -5488,7 +8737,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       const scaleX = rect.width / naturalW;
       const scaleY = rect.height / naturalH;
 
-      const boxes = imgData.allFaces.map(face => {
+      const boxes = imgData.allFaces.map((face) => {
         const relativeFaceScore = mapRawScoreToPercentage(face.score);
         const passesThreshold = relativeFaceScore >= currentThreshold;
         const isBest = face.score === imgData.score;
@@ -5501,31 +8750,35 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           width: `${face.rect.w * scaleX}px`,
           height: `${face.rect.h * scaleY}px`,
           borderColor: isGreen ? "lime" : "red",
-          boxShadow: isGreen ? "0 0 10px rgba(0,255,0,0.8)" : "0 0 10px rgba(255,0,0,0.5)",
+          boxShadow: isGreen
+            ? "0 0 10px rgba(0,255,0,0.8)"
+            : "0 0 10px rgba(255,0,0,0.5)",
           borderWidth: "2px",
           borderStyle: "solid",
           position: "absolute" as const,
-          pointerEvents: "none" as const
+          pointerEvents: "none" as const,
         };
 
-        const bodyStyle: React.CSSProperties | null = face.bodyRect ? {
-          display: "block",
-          left: `${face.bodyRect.x * scaleX}px`,
-          top: `${face.bodyRect.y * scaleY}px`,
-          width: `${face.bodyRect.w * scaleX}px`,
-          height: `${face.bodyRect.h * scaleY}px`,
-          border: "2px dashed rgba(99, 102, 241, 0.8)",
-          borderRadius: "8px",
-          boxShadow: "inset 0 0 16px rgba(99, 102, 241, 0.15)",
-          position: "absolute" as const,
-          pointerEvents: "none" as const
-        } : null;
+        const bodyStyle: React.CSSProperties | null = face.bodyRect
+          ? {
+              display: "block",
+              left: `${face.bodyRect.x * scaleX}px`,
+              top: `${face.bodyRect.y * scaleY}px`,
+              width: `${face.bodyRect.w * scaleX}px`,
+              height: `${face.bodyRect.h * scaleY}px`,
+              border: "2px dashed rgba(99, 102, 241, 0.8)",
+              borderRadius: "8px",
+              boxShadow: "inset 0 0 16px rgba(99, 102, 241, 0.15)",
+              position: "absolute" as const,
+              pointerEvents: "none" as const,
+            }
+          : null;
 
         return {
           faceStyle,
           bodyStyle,
           label: `${relativeFaceScore}%`,
-          isGreen
+          isGreen,
         };
       });
       setFaceBoxes(boxes);
@@ -5544,9 +8797,10 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   // Solo guarda datos AI (no thumbnails); identifica cada archivo por nombre+tamaño+fecha.
   const CACHE_FILENAME = "lumepic-culling-cache.json";
   // Subir esta versión cuando cambia el algoritmo de análisis invalida cachés viejas.
-  // v2: el score de la imagen pasa a basarse en el sujeto principal (prominencia), no el máximo.
-  const CACHE_VERSION = 2;
-  const fileKey = (file: File) => `${file.name}|${file.size}|${file.lastModified}`;
+  // v3: métrica de nitidez normalizada 128px + asignación global de caras.
+  const CACHE_VERSION = 3;
+  const fileKey = (file: File) =>
+    `${file.name}|${file.size}|${file.lastModified}`;
 
   const readFolderCache = async (handle: any): Promise<Map<string, any>> => {
     const map = new Map<string, any>();
@@ -5567,7 +8821,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   const writeFolderCache = async (handle: any, map: Map<string, any>) => {
     try {
       const entries: Record<string, any> = {};
-      map.forEach((v, k) => { entries[k] = v; });
+      map.forEach((v, k) => {
+        entries[k] = v;
+      });
       const fh = await handle.getFileHandle(CACHE_FILENAME, { create: true });
       const writable = await fh.createWritable();
       await writable.write(JSON.stringify({ version: CACHE_VERSION, entries }));
@@ -5582,7 +8838,10 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     new Promise((resolve, reject) => {
       const tempUrl = URL.createObjectURL(file);
       const img = new window.Image();
-      img.onerror = () => { URL.revokeObjectURL(tempUrl); reject(new Error("Failed to load image")); };
+      img.onerror = () => {
+        URL.revokeObjectURL(tempUrl);
+        reject(new Error("Failed to load image"));
+      };
       img.onload = () => {
         URL.revokeObjectURL(tempUrl);
         const canvas = document.createElement("canvas");
@@ -5605,7 +8864,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     });
 
   // Laplacian Image Analyzer
-  const analyzeSingleImage = async (file: File): Promise<Omit<ProcessedImage, "file">> => {
+  const analyzeSingleImage = async (
+    file: File,
+  ): Promise<Omit<ProcessedImage, "file">> => {
     return new Promise((resolve, reject) => {
       const tempUrl = URL.createObjectURL(file);
       const img = new window.Image();
@@ -5649,7 +8910,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           }
         }
 
-        const predictions = rawPredictions.filter(p => p.class === "person" && p.score >= 0.50);
+        const predictions = rawPredictions.filter(
+          (p) => p.class === "person" && p.score >= 0.5,
+        );
 
         let faceDetected = false;
         let bestScore = 0;
@@ -5660,101 +8923,256 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           const b = f.box || f;
           const xMin = b.xMin ?? (b.topLeft ? b.topLeft[0] : 0);
           const yMin = b.yMin ?? (b.topLeft ? b.topLeft[1] : 0);
-          const width = b.width ?? ((b.xMax ?? (b.bottomRight ? b.bottomRight[0] : 0)) - xMin);
-          const height = b.height ?? ((b.yMax ?? (b.bottomRight ? b.bottomRight[1] : 0)) - yMin);
+          const width =
+            b.width ??
+            (b.xMax ?? (b.bottomRight ? b.bottomRight[0] : 0)) - xMin;
+          const height =
+            b.height ??
+            (b.yMax ?? (b.bottomRight ? b.bottomRight[1] : 0)) - yMin;
           return { xMin, yMin, width, height };
+        };
+
+        const sharpnessCanvas = document.createElement("canvas");
+
+        const measureFaceSharpness = (
+          sourceCtx: CanvasRenderingContext2D,
+          box: { xMin: number; yMin: number; width: number; height: number },
+        ) => {
+          const insetX = box.width * 0.15;
+          const insetY = box.height * 0.15;
+          const sx = Math.max(0, box.xMin + insetX);
+          const sy = Math.max(0, box.yMin + insetY);
+          const sw = Math.min(
+            sourceCtx.canvas.width - sx,
+            box.width - insetX * 2,
+          );
+          const sh = Math.min(
+            sourceCtx.canvas.height - sy,
+            box.height - insetY * 2,
+          );
+          if (sw <= 2 || sh <= 2) return 0;
+
+          const TARGET = 128;
+          const scale = TARGET / Math.max(sw, sh);
+          sharpnessCanvas.width = Math.max(1, Math.round(sw * scale));
+          sharpnessCanvas.height = Math.max(1, Math.round(sh * scale));
+          const sctx = sharpnessCanvas.getContext("2d");
+          if (!sctx) return 0;
+          sctx.clearRect(0, 0, sharpnessCanvas.width, sharpnessCanvas.height);
+          sctx.drawImage(
+            sourceCtx.canvas,
+            sx,
+            sy,
+            sw,
+            sh,
+            0,
+            0,
+            sharpnessCanvas.width,
+            sharpnessCanvas.height,
+          );
+          return varianceOfLaplacian(
+            sctx.getImageData(
+              0,
+              0,
+              sharpnessCanvas.width,
+              sharpnessCanvas.height,
+            ),
+          );
         };
 
         // Construye una entrada de cara (nitidez + rects en coords originales) a partir de un recuadro
         // expresado en coordenadas del canvas escalado.
         const faceEntryFromBox = (
           box: { xMin: number; yMin: number; width: number; height: number },
-          bodyRect: any
+          bodyRect: any,
+          faceReal?: boolean,
         ) => {
           const pad = 0.15; // margen para enmarcar la cabeza completa
           const bx = Math.max(0, box.xMin - box.width * pad);
           const by = Math.max(0, box.yMin - box.height * pad);
           const bw = Math.min(canvas.width - bx, box.width * (1 + pad * 2));
           const bh = Math.min(canvas.height - by, box.height * (1 + pad * 2));
-          const ix = Math.round(bx);
-          const iy = Math.round(by);
-          const iw = Math.round(bw);
-          const ih = Math.round(bh);
-          let score = 0;
-          if (iw > 0 && ih > 0) {
-            score = varianceOfLaplacian(ctx.getImageData(ix, iy, iw, ih));
-          }
+          const score = measureFaceSharpness(ctx, box);
           return {
             score,
-            rect: { x: bx / scaleRatio, y: by / scaleRatio, w: bw / scaleRatio, h: bh / scaleRatio },
-            bodyRect
+            rect: {
+              x: bx / scaleRatio,
+              y: by / scaleRatio,
+              w: bw / scaleRatio,
+              h: bh / scaleRatio,
+            },
+            bodyRect,
+            faceReal,
           };
         };
 
         // Cascada de detección: recorta una región del canvas y la amplía para que la cara ocupe
         // gran parte del frame (el detector reescala su entrada a ~128px, así que pasarle el canvas
-        // completo deja las caras de multitudes en pocos píxeles e indetectables). Devuelve el mejor
-        // recuadro de cara mapeado a coordenadas del canvas escalado, o null.
-        const detectFaceInRegion = async (rX: number, rY: number, rW: number, rH: number) => {
-          if (!faceDetector) return null;
+        // completo deja las caras de multitudes en pocos píxeles e indetectables). Devuelve todos los
+        // recuadros de cara mapeados a coordenadas del canvas escalado.
+        const detectFaceInRegion = async (
+          rX: number,
+          rY: number,
+          rW: number,
+          rH: number,
+        ) => {
+          if (!faceDetector) return [];
           const regionX = Math.max(0, Math.floor(rX));
           const regionY = Math.max(0, Math.floor(rY));
           const regionW = Math.min(canvas.width - regionX, Math.ceil(rW));
           const regionH = Math.min(canvas.height - regionY, Math.ceil(rH));
-          if (regionW < 8 || regionH < 8) return null;
+          if (regionW < 8 || regionH < 8) return [];
 
           // El modelo reescala su entrada (~128px), así que solo necesitamos que la cara ocupe buena
           // parte del frame: 256px de lado mayor basta. Reducimos los recortes grandes (sujetos
           // cercanos) y ampliamos poco los chicos -> menos datos a la GPU sin perder detección.
           const TARGET = 256;
           const scale = Math.min(3, TARGET / Math.max(regionW, regionH));
-          const tmp = faceWorkCanvasRef.current || (faceWorkCanvasRef.current = document.createElement("canvas"));
+          const tmp =
+            faceWorkCanvasRef.current ||
+            (faceWorkCanvasRef.current = document.createElement("canvas"));
           tmp.width = Math.max(1, Math.round(regionW * scale));
           tmp.height = Math.max(1, Math.round(regionH * scale));
           const tctx = tmp.getContext("2d");
-          if (!tctx) return null;
+          if (!tctx) return [];
           tctx.clearRect(0, 0, tmp.width, tmp.height);
-          tctx.drawImage(canvas, regionX, regionY, regionW, regionH, 0, 0, tmp.width, tmp.height);
+          tctx.drawImage(
+            canvas,
+            regionX,
+            regionY,
+            regionW,
+            regionH,
+            0,
+            0,
+            tmp.width,
+            tmp.height,
+          );
 
           let faces: any[] = [];
           try {
-            faces = await faceDetector.estimateFaces(tmp, { flipHorizontal: false });
+            faces = await faceDetector.estimateFaces(tmp, {
+              flipHorizontal: false,
+            });
           } catch (e) {
             console.error("Face detection error:", e);
-            return null;
+            return [];
           }
-          if (!faces || !faces.length) return null;
-
-          // Elegir la cara de mayor área dentro del recorte.
-          let best: any = null;
-          let bestArea = -1;
-          for (const f of faces) {
-            const b = normalizeBox(f);
-            const area = b.width * b.height;
-            if (area > bestArea) {
-              bestArea = area;
-              best = b;
-            }
-          }
-          if (!best) return null;
+          if (!faces || !faces.length) return [];
 
           // Mapear de coords del recorte de vuelta al canvas escalado.
-          return {
-            xMin: regionX + best.xMin / scale,
-            yMin: regionY + best.yMin / scale,
-            width: best.width / scale,
-            height: best.height / scale
-          };
+          return faces
+            .map((f) => normalizeBox(f))
+            .filter((b) => b.width > 0 && b.height > 0)
+            .map((b) => ({
+              xMin: regionX + b.xMin / scale,
+              yMin: regionY + b.yMin / scale,
+              width: b.width / scale,
+              height: b.height / scale,
+            }));
+        };
+
+        const faceIoU = (
+          a: { xMin: number; yMin: number; width: number; height: number },
+          b: { xMin: number; yMin: number; width: number; height: number },
+        ) => {
+          const ax2 = a.xMin + a.width;
+          const ay2 = a.yMin + a.height;
+          const bx2 = b.xMin + b.width;
+          const by2 = b.yMin + b.height;
+          const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(a.xMin, b.xMin));
+          const iy = Math.max(0, Math.min(ay2, by2) - Math.max(a.yMin, b.yMin));
+          const inter = ix * iy;
+          const union = a.width * a.height + b.width * b.height - inter;
+          return union > 0 ? inter / union : 0;
+        };
+
+        const nmsFaces = (
+          faces: Array<{
+            xMin: number;
+            yMin: number;
+            width: number;
+            height: number;
+          }>,
+        ) => {
+          const sortedFaces = [...faces].sort(
+            (a, b) => b.width * b.height - a.width * a.height,
+          );
+          const kept: Array<{
+            xMin: number;
+            yMin: number;
+            width: number;
+            height: number;
+          }> = [];
+          for (const face of sortedFaces) {
+            if (kept.every((k) => faceIoU(face, k) <= 0.45)) kept.push(face);
+          }
+          return kept;
         };
 
         // La detección de cara es lo costoso: limitarla a los sujetos más grandes (los del frente).
         // El resto (multitudes de fondo) usa la heurística barata, sin inferencias extra.
         const FACE_DETECT_LIMIT = 6;
-        const faceDetectSet = new Set(
-          [...predictions]
-            .sort((a, b) => (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]))
-            .slice(0, FACE_DETECT_LIMIT)
+        const personsByArea = [...predictions].sort(
+          (a, b) => b.bbox[2] * b.bbox[3] - a.bbox[2] * a.bbox[3],
         );
+        const faceDetectPersons = personsByArea.slice(0, FACE_DETECT_LIMIT);
+        let facePool: Array<{
+          xMin: number;
+          yMin: number;
+          width: number;
+          height: number;
+        }> = [];
+
+        if (predictions.length > 0) {
+          for (const person of faceDetectPersons) {
+            const [fX, fY, fW, fH] = person.bbox;
+            const faces = await detectFaceInRegion(fX, fY, fW, fH * 0.6);
+            facePool.push(...faces);
+          }
+          facePool = nmsFaces(facePool);
+        }
+
+        const assignedFaces = new Map<
+          any,
+          { xMin: number; yMin: number; width: number; height: number }
+        >();
+        const usedFaceIndexes = new Set<number>();
+
+        for (const person of personsByArea) {
+          const [fX, fY, fW, fH] = person.bbox;
+          let bestFaceIndex = -1;
+          let bestFaceScore = -1;
+          for (let i = 0; i < facePool.length; i++) {
+            if (usedFaceIndexes.has(i)) continue;
+            const face = facePool[i];
+            const faceCenterX = face.xMin + face.width / 2;
+            const faceCenterY = face.yMin + face.height / 2;
+            if (
+              faceCenterX < fX ||
+              faceCenterX > fX + fW ||
+              faceCenterY < fY ||
+              faceCenterY > fY + fH * 0.6
+            ) {
+              continue;
+            }
+            if (face.width < fW * 0.1 || face.width > fW * 0.75) continue;
+
+            const relativeY = Math.min(
+              1,
+              Math.max(0, (faceCenterY - fY) / (fH * 0.6 || 1)),
+            );
+            const verticalWeight = 1 - 0.5 * relativeY;
+            const assignmentScore = face.width * face.height * verticalWeight;
+            if (assignmentScore > bestFaceScore) {
+              bestFaceScore = assignmentScore;
+              bestFaceIndex = i;
+            }
+          }
+          if (bestFaceIndex >= 0) {
+            usedFaceIndexes.add(bestFaceIndex);
+            assignedFaces.set(person, facePool[bestFaceIndex]);
+          }
+        }
 
         if (predictions.length > 0) {
           for (const person of predictions) {
@@ -5767,18 +9185,17 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
               x: fX / scaleRatio,
               y: fY / scaleRatio,
               w: fW / scaleRatio,
-              h: fH / scaleRatio
+              h: fH / scaleRatio,
             };
 
             // 1) Detección de cara real recortando la mitad superior del cuerpo (donde está la cabeza).
             //    Solo para los sujetos grandes; cubre poses erguidas e inclinadas sin meter piernas/fondo.
-            const faceBox = faceDetectSet.has(person)
-              ? await detectFaceInRegion(fX, fY, fW, fH * 0.6)
-              : null;
+            const faceBox = assignedFaces.get(person);
             if (faceBox) {
-              const entry = faceEntryFromBox(faceBox, personBodyRect);
+              const entry = faceEntryFromBox(faceBox, personBodyRect, true);
               allFaces.push(entry);
-              if (entry.score > bestScore || bestScore === 0) bestScore = entry.score;
+              if (entry.score > bestScore || bestScore === 0)
+                bestScore = entry.score;
               continue;
             }
 
@@ -5800,7 +9217,10 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
             let maxScore = -1;
 
             const startX = Math.max(0, Math.round(fX));
-            const endX = Math.min(canvas.width - headW, Math.max(startX, Math.round(fX + fW - headW)));
+            const endX = Math.min(
+              canvas.width - headW,
+              Math.max(startX, Math.round(fX + fW - headW)),
+            );
             const centerX = fX + (fW - headW) / 2;
             const maxDist = Math.max(1, (fW - headW) / 2);
             const step = 8;
@@ -5809,9 +9229,14 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
               const finalW = Math.min(canvas.width - sX, headW);
               const finalH = Math.min(canvas.height - Math.round(fY), headH);
               if (finalW > 0 && finalH > 0) {
-                const faceImageData = ctx.getImageData(sX, Math.max(0, Math.round(fY)), finalW, finalH);
+                const faceImageData = ctx.getImageData(
+                  sX,
+                  Math.max(0, Math.round(fY)),
+                  finalW,
+                  finalH,
+                );
                 const rawVariance = varianceOfLaplacian(faceImageData);
-                
+
                 // 1. Texture Gate: Evita que el follaje de fondo con varianza altísima domine sobre un rostro
                 const cappedVariance = Math.min(13.0, rawVariance);
 
@@ -5819,7 +9244,8 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 let totalLuma = 0;
                 const d = faceImageData.data;
                 for (let j = 0; j < d.length; j += 4) {
-                  totalLuma += d[j] * 0.299 + d[j+1] * 0.587 + d[j+2] * 0.114;
+                  totalLuma +=
+                    d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114;
                 }
                 const avgLuma = totalLuma / (d.length / 4);
                 const lumaFactor = Math.max(0.1, 1.0 - (avgLuma / 255) * 0.7);
@@ -5844,27 +9270,32 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
             const finalH = Math.min(canvas.height - headY, headH);
 
             if (finalW > 0 && finalH > 0) {
-              const faceImageData = ctx.getImageData(headX, headY, finalW, finalH);
-              const currentScore = varianceOfLaplacian(faceImageData);
+              const currentScore = measureFaceSharpness(ctx, {
+                xMin: headX,
+                yMin: headY,
+                width: finalW,
+                height: finalH,
+              });
 
               const visualRect = {
                 x: headX / scaleRatio,
                 y: headY / scaleRatio,
                 w: finalW / scaleRatio,
-                h: finalH / scaleRatio
+                h: finalH / scaleRatio,
               };
 
               const bodyRect = {
                 x: fX / scaleRatio,
                 y: fY / scaleRatio,
                 w: fW / scaleRatio,
-                h: fH / scaleRatio
+                h: fH / scaleRatio,
               };
 
               allFaces.push({
                 score: currentScore,
                 rect: visualRect,
-                bodyRect: bodyRect
+                bodyRect: bodyRect,
+                faceReal: false,
               });
 
               if (currentScore > bestScore || bestScore === 0) {
@@ -5876,11 +9307,20 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
         // Sin personas detectadas: intentar detección de cara sobre el canvas completo.
         if (predictions.length === 0) {
-          const faceBox = await detectFaceInRegion(0, 0, canvas.width, canvas.height);
+          const faceBoxes = await detectFaceInRegion(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
+          const faceBox = faceBoxes.sort(
+            (a, b) => b.width * b.height - a.width * a.height,
+          )[0];
           if (faceBox) {
-            const entry = faceEntryFromBox(faceBox, undefined);
+            const entry = faceEntryFromBox(faceBox, undefined, true);
             allFaces.push(entry);
-            if (entry.score > bestScore || bestScore === 0) bestScore = entry.score;
+            if (entry.score > bestScore || bestScore === 0)
+              bestScore = entry.score;
           }
         }
 
@@ -5901,9 +9341,20 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
             const area = Math.max(1, fw * fh);
             const fcx = f.rect.x + f.rect.w / 2;
             const fcy = f.rect.y + f.rect.h / 2;
-            const dist = Math.min(1, Math.hypot(fcx - cxImg, fcy - cyImg) / halfDiag);
+            const dist = Math.min(
+              1,
+              Math.hypot(fcx - cxImg, fcy - cyImg) / halfDiag,
+            );
             const centrality = Math.max(0.15, 1 - 0.6 * dist); // centro=1.0, bordes≈0.4
-            const prom = area * centrality;
+            let prom = area * centrality;
+            if (f.faceReal) prom *= 1.3;
+            if (
+              f.bodyRect &&
+              (f.bodyRect.x <= 1 ||
+                f.bodyRect.x + f.bodyRect.w >= img.width - 1)
+            ) {
+              prom *= 0.85;
+            }
             if (prom > bestProm) {
               bestProm = prom;
               primary = f;
@@ -5911,6 +9362,12 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           }
           primary.isPrimary = true;
           bestScore = primary.score;
+          if (DEBUG_CULLING) {
+            console.log("Culling primary variance:", {
+              rawPrimaryVariance: bestScore,
+              mappedPercentage: mapRawScoreToPercentage(bestScore),
+            });
+          }
         } else {
           // Sin personas ni caras detectadas: medir nitidez sobre la ventana central.
           const cropSize = Math.round(Math.min(width, height) * 0.5);
@@ -5918,7 +9375,12 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           const cropY = Math.round((height - cropSize) / 2);
 
           if (cropSize > 0) {
-            const imageData = ctx.getImageData(cropX, cropY, cropSize, cropSize);
+            const imageData = ctx.getImageData(
+              cropX,
+              cropY,
+              cropSize,
+              cropSize,
+            );
             bestScore = varianceOfLaplacian(imageData);
           }
         }
@@ -5928,7 +9390,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           thumbUrl,
           faceDetected,
           allFaces,
-          totalFaces: allFaces.length
+          totalFaces: allFaces.length,
         });
       };
       img.src = tempUrl;
@@ -5949,7 +9411,10 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
         });
       }
     } catch (e) {
-      console.warn("No se pudo activar Wake Lock (la pantalla podría apagarse):", e);
+      console.warn(
+        "No se pudo activar Wake Lock (la pantalla podría apagarse):",
+        e,
+      );
     }
   };
 
@@ -5969,7 +9434,11 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   // si seguimos procesando.
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "visible" && wakeLockWantedRef.current && !wakeLockRef.current) {
+      if (
+        document.visibilityState === "visible" &&
+        wakeLockWantedRef.current &&
+        !wakeLockRef.current
+      ) {
         acquireWakeLock();
       }
     };
@@ -5978,9 +9447,13 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   }, []);
 
   // Process list with yield logic to prevent tab freezing
-  const processFileList = async (filesToProcess: File[], folderHandle?: any) => {
+  const processFileList = async (
+    filesToProcess: File[],
+    folderHandle?: any,
+  ) => {
     setProcessedImages([]);
     setAcceptedOverrides(new Set());
+    setPrimaryOverrides(new Map());
     setIsAnalyzing(true);
     setAnalyzingPercent(0);
     await acquireWakeLock();
@@ -5994,15 +9467,18 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
     // Caché: si hay carpeta con acceso de escritura, reutilizamos resultados AI ya calculados.
     const handle = folderHandle ?? dirHandle;
-    const cache = handle ? await readFolderCache(handle) : new Map<string, any>();
+    const cache = handle
+      ? await readFolderCache(handle)
+      : new Map<string, any>();
     let cacheDirty = false;
     let reused = 0;
 
     const channel = new MessageChannel();
-    const yieldToMain = () => new Promise(res => {
-      channel.port1.onmessage = res;
-      channel.port2.postMessage(null);
-    });
+    const yieldToMain = () =>
+      new Promise((res) => {
+        channel.port1.onmessage = res;
+        channel.port2.postMessage(null);
+      });
 
     const anyWindow = window as any;
     const tf = anyWindow.tf;
@@ -6013,7 +9489,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       setAnalyzingProgress(
         language === "es"
           ? `Analizando sujetos y nitidez... foto ${i + 1} de ${filesToProcess.length}...`
-          : `Analyzing subjects and sharpness... photo ${i + 1} of ${filesToProcess.length}...`
+          : `Analyzing subjects and sharpness... photo ${i + 1} of ${filesToProcess.length}...`,
       );
       setAnalyzingPercent(Math.round(((i + 1) / filesToProcess.length) * 100));
 
@@ -6032,8 +9508,10 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
             score: cached.score,
             faceDetected: cached.faceDetected,
             allFaces: cached.allFaces || [],
-            totalFaces: cached.totalFaces ?? (cached.allFaces ? cached.allFaces.length : 0),
-            eyesClosed: cached.eyesClosed
+            totalFaces:
+              cached.totalFaces ??
+              (cached.allFaces ? cached.allFaces.length : 0),
+            eyesClosed: cached.eyesClosed,
           });
           reused++;
         } else {
@@ -6047,7 +9525,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
             faceDetected: result.faceDetected,
             allFaces: result.allFaces,
             totalFaces: result.totalFaces,
-            eyesClosed: result.eyesClosed
+            eyesClosed: result.eyesClosed,
           });
           cacheDirty = true;
         }
@@ -6081,17 +9559,27 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       await writeFolderCache(handle, cache);
     }
     if (reused > 0) {
-      console.info(`Culling caché: ${reused}/${filesToProcess.length} fotos reutilizadas desde ${CACHE_FILENAME}`);
+      console.info(
+        `Culling caché: ${reused}/${filesToProcess.length} fotos reutilizadas desde ${CACHE_FILENAME}`,
+      );
     }
 
     // native notification
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-      new Notification(language === "es" ? "¡Análisis Completado!" : "Analysis Completed!", {
-        body: language === "es" 
-          ? `Se evaluaron ${filesToProcess.length} fotos exitosamente.` 
-          : `Evaluated ${filesToProcess.length} photos successfully.`,
-        icon: "https://cdn-icons-png.flaticon.com/512/1043/1043516.png"
-      });
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    ) {
+      new Notification(
+        language === "es" ? "¡Análisis Completado!" : "Analysis Completed!",
+        {
+          body:
+            language === "es"
+              ? `Se evaluaron ${filesToProcess.length} fotos exitosamente.`
+              : `Evaluated ${filesToProcess.length} photos successfully.`,
+          icon: "https://cdn-icons-png.flaticon.com/512/1043/1043516.png",
+        },
+      );
     }
   };
 
@@ -6110,7 +9598,11 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
       const handle = await picker({ mode: "readwrite" });
       setDirHandle(handle);
-      setAnalyzingProgress(language === "es" ? "Escaneando carpeta nativa..." : "Scanning local folder...");
+      setAnalyzingProgress(
+        language === "es"
+          ? "Escaneando carpeta nativa..."
+          : "Scanning local folder...",
+      );
       setAnalyzingPercent(0);
 
       const list: File[] = [];
@@ -6126,7 +9618,11 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       }
 
       if (list.length === 0) {
-        setAnalyzingProgress(language === "es" ? "No se encontraron fotos (JPG/PNG/WEBP) en la carpeta." : "No pictures (JPG/PNG/WEBP) found in directory.");
+        setAnalyzingProgress(
+          language === "es"
+            ? "No se encontraron fotos (JPG/PNG/WEBP) en la carpeta."
+            : "No pictures (JPG/PNG/WEBP) found in directory.",
+        );
         return;
       }
 
@@ -6139,40 +9635,52 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       }
       console.error("Directory picking failed:", e);
       setAnalyzingProgress(null);
-      alert(language === "es" ? `No se pudo acceder a la carpeta: ${e.message}` : `Could not access directory: ${e.message}`);
+      alert(
+        language === "es"
+          ? `No se pudo acceder a la carpeta: ${e.message}`
+          : `Could not access directory: ${e.message}`,
+      );
     }
   };
 
   // Culling execution
   const handleCullImages = async () => {
-    const blurryFiles = processedImages.filter(img => !isImageAccepted(img));
+    const blurryFiles = processedImages.filter((img) => !isImageAccepted(img));
 
     if (blurryFiles.length === 0) {
       alert(
         language === "es"
           ? `¡Excelente! Ninguna foto está por debajo del umbral del ${currentThreshold}%.`
-          : `Excellent! No photos are below the ${currentThreshold}% threshold.`
+          : `Excellent! No photos are below the ${currentThreshold}% threshold.`,
       );
       return;
     }
 
-    const confirmMsg = language === "es"
-      ? `Se detectaron ${blurryFiles.length} fotos borrosas por debajo del umbral establecido (${currentThreshold}%).\n\n¿Proceder con el culling?`
-      : `Detected ${blurryFiles.length} blurry photos below the specified threshold (${currentThreshold}%).\n\nProceed with culling?`;
+    const confirmMsg =
+      language === "es"
+        ? `Se detectaron ${blurryFiles.length} fotos borrosas por debajo del umbral establecido (${currentThreshold}%).\n\n¿Proceder con el culling?`
+        : `Detected ${blurryFiles.length} blurry photos below the specified threshold (${currentThreshold}%).\n\nProceed with culling?`;
 
     if (!confirm(confirmMsg)) return;
 
     if (dirHandle) {
       // Native File System Access cleanup
-      const confirmDiskMsg = language === "es"
-        ? `¡ÚLTIMA CONFIRMACIÓN!\n\nSe moverán físicamente ${blurryFiles.length} archivos a una subcarpeta llamada REJECTED dentro de tu disco.\n\n¿Proceder?`
-        : `FINAL CONFIRMATION!\n\nThis will physically move ${blurryFiles.length} files to a REJECTED subfolder on your disk.\n\nProceed?`;
+      const confirmDiskMsg =
+        language === "es"
+          ? `¡ÚLTIMA CONFIRMACIÓN!\n\nSe moverán físicamente ${blurryFiles.length} archivos a una subcarpeta llamada REJECTED dentro de tu disco.\n\n¿Proceder?`
+          : `FINAL CONFIRMATION!\n\nThis will physically move ${blurryFiles.length} files to a REJECTED subfolder on your disk.\n\nProceed?`;
 
       if (!confirm(confirmDiskMsg)) return;
 
-      setAnalyzingProgress(language === "es" ? "Creando subcarpeta y moviendo archivos..." : "Creating rejected subfolder and moving files...");
+      setAnalyzingProgress(
+        language === "es"
+          ? "Creando subcarpeta y moviendo archivos..."
+          : "Creating rejected subfolder and moving files...",
+      );
       try {
-        const rejectedDir = await dirHandle.getDirectoryHandle("REJECTED", { create: true });
+        const rejectedDir = await dirHandle.getDirectoryHandle("REJECTED", {
+          create: true,
+        });
         let moved = 0;
         for (const img of blurryFiles) {
           if (img.file.handle) {
@@ -6181,19 +9689,25 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           }
         }
 
-        const remaining = processedImages.filter(img => !blurryFiles.includes(img));
+        const remaining = processedImages.filter(
+          (img) => !blurryFiles.includes(img),
+        );
         setProcessedImages(remaining);
         setAnalyzingProgress(null);
 
         alert(
           language === "es"
             ? `¡Culling completado! Se trasladaron ${moved} fotos exitosamente.`
-            : `Culling completed! Moved ${moved} photos successfully.`
+            : `Culling completed! Moved ${moved} photos successfully.`,
         );
       } catch (e: any) {
         console.error("Native file move failed:", e);
         setAnalyzingProgress(null);
-        alert(language === "es" ? `Error al trasladar archivos: ${e.message}` : `Error moving files: ${e.message}`);
+        alert(
+          language === "es"
+            ? `Error al trasladar archivos: ${e.message}`
+            : `Error moving files: ${e.message}`,
+        );
       }
     } else {
       // Fallback: trigger command script modal
@@ -6203,7 +9717,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   };
 
   const handleCopyScript = () => {
-    const el = document.getElementById("bash-culling-command") as HTMLTextAreaElement;
+    const el = document.getElementById(
+      "bash-culling-command",
+    ) as HTMLTextAreaElement;
     if (el) {
       el.select();
       document.execCommand("copy");
@@ -6218,7 +9734,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     let scriptText = `#!/bin/bash\n`;
     scriptText += `cd "$(dirname "$0")"\n`;
     scriptText += `mkdir -p REJECTED\n`;
-    scriptBlurryFiles.forEach(img => {
+    scriptBlurryFiles.forEach((img) => {
       scriptText += `mv "${img.file.name}" REJECTED/\n`;
     });
     scriptText += `echo ""\n`;
@@ -6242,7 +9758,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   const closeScriptModal = () => {
     setScriptOpen(false);
     // filter culled images from current view
-    const remaining = processedImages.filter(img => !scriptBlurryFiles.includes(img));
+    const remaining = processedImages.filter(
+      (img) => !scriptBlurryFiles.includes(img),
+    );
     setProcessedImages(remaining);
   };
 
@@ -6279,7 +9797,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   // El índice actual se ubica en el snapshot (no en `displayed`), que no cambia al togglear overrides.
   const currentModalIndex = () =>
-    activeModalKey ? modalList.findIndex(i => i.file.name === activeModalKey) : (activeModalIndex ?? -1);
+    activeModalKey
+      ? modalList.findIndex((i) => i.file.name === activeModalKey)
+      : (activeModalIndex ?? -1);
 
   const handlePrevImage = () => {
     const idx = currentModalIndex();
@@ -6309,7 +9829,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
         // Espacio: incluir/excluir manualmente la foto abierta (override de la sesión).
         e.preventDefault();
         if (activeModalKey) {
-          setAcceptedOverrides(prev => {
+          setAcceptedOverrides((prev) => {
             const next = new Set(prev);
             if (next.has(activeModalKey)) next.delete(activeModalKey);
             else next.add(activeModalKey);
@@ -6324,7 +9844,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   const handleForceAccept = (e: React.MouseEvent, fileName: string) => {
     e.stopPropagation();
-    setAcceptedOverrides(prev => {
+    setAcceptedOverrides((prev) => {
       const next = new Set(prev);
       next.add(fileName);
       return next;
@@ -6333,7 +9853,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   const handleRemoveOverride = (e: React.MouseEvent, fileName: string) => {
     e.stopPropagation();
-    setAcceptedOverrides(prev => {
+    setAcceptedOverrides((prev) => {
       const next = new Set(prev);
       next.delete(fileName);
       return next;
@@ -6350,7 +9870,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
         const existing = document.getElementById(id);
         if (existing) {
           existing.addEventListener("load", () => resolve());
-          existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)));
+          existing.addEventListener("error", () =>
+            reject(new Error(`Failed to load ${src}`)),
+          );
           return;
         }
         const s = document.createElement("script");
@@ -6365,22 +9887,27 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     await loadScript(
       "https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection",
       "facemesh-script",
-      "faceLandmarksDetection"
+      "faceLandmarksDetection",
     );
     const det = await w.faceLandmarksDetection.createDetector(
       w.faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
-      { runtime: "tfjs", refineLandmarks: false, maxFaces: 1 }
+      { runtime: "tfjs", refineLandmarks: false, maxFaces: 1 },
     );
     setFaceMeshDetector(det);
     return det;
   };
 
   // Ejecuta FaceMesh sobre el recorte de la cara más nítida y devuelve si los ojos están cerrados.
-  const detectEyesClosed = (detector: any, img: ProcessedImage): Promise<boolean> =>
+  const detectEyesClosed = (
+    detector: any,
+    img: ProcessedImage,
+  ): Promise<boolean> =>
     new Promise((resolve, reject) => {
-      const best = img.allFaces && img.allFaces.length
-        ? (img.allFaces.find(f => f.isPrimary) ?? [...img.allFaces].sort((a, b) => b.score - a.score)[0])
-        : null;
+      const best =
+        img.allFaces && img.allFaces.length
+          ? (img.allFaces.find((f) => f.isPrimary) ??
+            [...img.allFaces].sort((a, b) => b.score - a.score)[0])
+          : null;
       if (!best) return resolve(false);
 
       const url = URL.createObjectURL(img.file);
@@ -6416,11 +9943,15 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           console.error("FaceMesh error:", e);
           return resolve(false);
         }
-        if (!faces || !faces.length || !faces[0].keypoints) return resolve(false);
+        if (!faces || !faces.length || !faces[0].keypoints)
+          return resolve(false);
         const kp = faces[0].keypoints;
         if (kp.length < 468) return resolve(false);
 
-        const ear = (eyeAspectRatio(kp, RIGHT_EYE_EAR) + eyeAspectRatio(kp, LEFT_EYE_EAR)) / 2;
+        const ear =
+          (eyeAspectRatio(kp, RIGHT_EYE_EAR) +
+            eyeAspectRatio(kp, LEFT_EYE_EAR)) /
+          2;
         resolve(ear < EYE_CLOSED_THRESHOLD);
       };
       im.src = url;
@@ -6428,10 +9959,12 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
   // Pasada incremental: solo fotos ya nítidas y aún no evaluadas.
   const runEyeCheckPass = async (detector: any) => {
-    const targets = processedImages.filter(img =>
-      mapRawScoreToPercentage(img.score) >= currentThreshold &&
-      img.eyesClosed === undefined &&
-      img.allFaces && img.allFaces.length > 0
+    const targets = processedImages.filter(
+      (img) =>
+        mapRawScoreToPercentage(effectiveScore(img)) >= currentThreshold &&
+        img.eyesClosed === undefined &&
+        img.allFaces &&
+        img.allFaces.length > 0,
     );
     if (!targets.length) return;
 
@@ -6450,15 +9983,17 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
         setAnalyzingProgress(
           language === "es"
             ? `Analizando ojos cerrados... ${done}/${targets.length}`
-            : `Checking for closed eyes... ${done}/${targets.length}`
+            : `Checking for closed eyes... ${done}/${targets.length}`,
         );
       }
     }
 
-    setProcessedImages(prev =>
-      prev.map(img =>
-        results.has(img.file.name) ? { ...img, eyesClosed: results.get(img.file.name) } : img
-      )
+    setProcessedImages((prev) =>
+      prev.map((img) =>
+        results.has(img.file.name)
+          ? { ...img, eyesClosed: results.get(img.file.name) }
+          : img,
+      ),
     );
 
     // Persistir el resultado de ojos en la caché de la carpeta para no recomputarlo la próxima vez.
@@ -6472,7 +10007,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           score: img.score,
           faceDetected: img.faceDetected,
           allFaces: img.allFaces,
-          totalFaces: img.totalFaces
+          totalFaces: img.totalFaces,
         };
         entry.eyesClosed = results.get(img.file.name);
         cache.set(key, entry);
@@ -6490,7 +10025,11 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     if (!next) return; // al apagar, solo se ignoran los resultados (sin recomputar)
 
     try {
-      setAnalyzingProgress(language === "es" ? "Cargando modelo de rostro (FaceMesh)..." : "Loading face model (FaceMesh)...");
+      setAnalyzingProgress(
+        language === "es"
+          ? "Cargando modelo de rostro (FaceMesh)..."
+          : "Loading face model (FaceMesh)...",
+      );
       setAnalyzingPercent(0);
       const det = await ensureFaceMesh();
       await runEyeCheckPass(det);
@@ -6507,51 +10046,87 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     if (!scriptOpen) return null;
 
     let commandText = `mkdir -p REJECTED && mv `;
-    scriptBlurryFiles.forEach(img => {
+    scriptBlurryFiles.forEach((img) => {
       commandText += `"${img.file.name}" `;
     });
     commandText += `REJECTED/`;
 
     return (
       <div className="modal-backdrop" onClick={closeScriptModal}>
-        <section className="settings-modal" onClick={(e) => e.stopPropagation()} style={{
-          width: "min(600px, 100%)",
-          padding: "24px",
-          border: "1px solid var(--line)",
-          borderRadius: "24px",
-          background: "var(--white)",
-          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.15)",
-          maxHeight: "90vh",
-          overflowY: "auto"
-        }}>
-          <header className="modal-header" style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: "14px", borderBottom: "1px solid var(--line)" }}>
+        <section
+          className="settings-modal"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: "min(600px, 100%)",
+            padding: "24px",
+            border: "1px solid var(--line)",
+            borderRadius: "24px",
+            background: "var(--white)",
+            boxShadow: "0 24px 80px rgba(0, 0, 0, 0.15)",
+            maxHeight: "90vh",
+            overflowY: "auto",
+          }}
+        >
+          <header
+            className="modal-header"
+            style={{
+              marginBottom: "20px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              paddingBottom: "14px",
+              borderBottom: "1px solid var(--line)",
+            }}
+          >
             <div>
               <h2 style={{ fontSize: "1.35rem", fontWeight: "800", margin: 0 }}>
-                {language === "es" ? "💾 Generar Script de Depuración" : "💾 Generate Culling Script"}
+                {language === "es"
+                  ? "💾 Generar Script de Depuración"
+                  : "💾 Generate Culling Script"}
               </h2>
-              <p style={{ color: "var(--muted)", fontSize: "0.82rem", margin: "4px 0 0 0" }}>
-                {language === "es" 
-                  ? `Se detectaron ${scriptBlurryFiles.length} fotos borrosas. Copia el comando o descarga el script ejecutable.` 
+              <p
+                style={{
+                  color: "var(--muted)",
+                  fontSize: "0.82rem",
+                  margin: "4px 0 0 0",
+                }}
+              >
+                {language === "es"
+                  ? `Se detectaron ${scriptBlurryFiles.length} fotos borrosas. Copia el comando o descarga el script ejecutable.`
                   : `Detected ${scriptBlurryFiles.length} blurry photos. Copy command or download script.`}
               </p>
             </div>
-            <button className="icon-button" onClick={closeScriptModal} style={{
-              border: "none",
-              background: "var(--paper-2)",
-              cursor: "pointer",
-              padding: "6px",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center"
-            }}>
+            <button
+              className="icon-button"
+              onClick={closeScriptModal}
+              style={{
+                border: "none",
+                background: "var(--paper-2)",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
               <X size={16} />
             </button>
           </header>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+          >
             <div>
-              <strong style={{ display: "block", fontSize: "0.92rem", marginBottom: "8px" }}>
-                {language === "es" ? "Opción 1: Comando de Terminal" : "Option 1: Terminal Command"}
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "0.92rem",
+                  marginBottom: "8px",
+                }}
+              >
+                {language === "es"
+                  ? "Opción 1: Comando de Terminal"
+                  : "Option 1: Terminal Command"}
               </strong>
               <div style={{ position: "relative" }}>
                 <textarea
@@ -6568,7 +10143,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                     fontSize: "0.76rem",
                     resize: "none",
                     outline: "none",
-                    background: "var(--paper-2)"
+                    background: "var(--paper-2)",
                   }}
                 />
                 <button
@@ -6582,22 +10157,47 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                     padding: "0 10px",
                     background: "var(--ink)",
                     color: "var(--white)",
-                    fontSize: "0.74rem"
+                    fontSize: "0.74rem",
                   }}
                 >
                   <Copy size={12} style={{ marginRight: 4 }} />
-                  {copied ? (language === "es" ? "Copiado" : "Copied") : (language === "es" ? "Copiar" : "Copy")}
+                  {copied
+                    ? language === "es"
+                      ? "Copiado"
+                      : "Copied"
+                    : language === "es"
+                      ? "Copiar"
+                      : "Copy"}
                 </button>
               </div>
             </div>
 
-            <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: "16px" }}>
-              <strong style={{ display: "block", fontSize: "0.92rem", marginBottom: "8px" }}>
-                {language === "es" ? "Opción 2: Script Ejecutable de macOS" : "Option 2: Executable macOS Script"}
+            <div
+              style={{
+                borderTop: "1px solid var(--line-soft)",
+                paddingTop: "16px",
+              }}
+            >
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "0.92rem",
+                  marginBottom: "8px",
+                }}
+              >
+                {language === "es"
+                  ? "Opción 2: Script Ejecutable de macOS"
+                  : "Option 2: Executable macOS Script"}
               </strong>
-              <p style={{ fontSize: "0.78rem", color: "var(--muted)", margin: "0 0 12px 0" }}>
-                {language === "es" 
-                  ? "Descarga el script, colócalo en la misma carpeta que tus fotos y ejecútalo haciendo doble clic." 
+              <p
+                style={{
+                  fontSize: "0.78rem",
+                  color: "var(--muted)",
+                  margin: "0 0 12px 0",
+                }}
+              >
+                {language === "es"
+                  ? "Descarga el script, colócalo en la misma carpeta que tus fotos y ejecútalo haciendo doble clic."
                   : "Download the script, place it in the same directory as the pictures, and double-click to execute."}
               </p>
               <button
@@ -6609,11 +10209,13 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                   background: "var(--accent, #6366f1)",
                   color: "var(--white)",
                   fontWeight: "600",
-                  fontSize: "0.82rem"
+                  fontSize: "0.82rem",
                 }}
               >
                 <Download size={14} style={{ marginRight: 6 }} />
-                {language === "es" ? "Descargar Mover_Borrosas.command" : "Download Mover_Borrosas.command"}
+                {language === "es"
+                  ? "Descargar Mover_Borrosas.command"
+                  : "Download Mover_Borrosas.command"}
               </button>
             </div>
           </div>
@@ -6627,19 +10229,39 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     if (!activeModalKey || !activeModalUrl) return null;
     const imgData = activeModalImg;
     if (!imgData) return null;
-    const modalIndex = modalList.findIndex(i => i.file.name === activeModalKey);
+    const modalIndex = modalList.findIndex(
+      (i) => i.file.name === activeModalKey,
+    );
+    const primaryOverrideIndex = primaryOverrides.get(imgData.file.name);
 
     return (
-      <div className="modal-backdrop" onClick={handleCloseLightbox} style={{ background: "rgba(0,0,0,0.95)", zIndex: 999 }}>
-        <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 10, zIndex: 1000 }}>
-          <button className="icon-button" onClick={handleCloseLightbox} style={{
-            background: "rgba(255,255,255,0.15)",
-            border: "none",
-            color: "#fff",
-            padding: "8px",
-            borderRadius: "50%",
-            cursor: "pointer"
-          }}>
+      <div
+        className="modal-backdrop"
+        onClick={handleCloseLightbox}
+        style={{ background: "rgba(0,0,0,0.95)", zIndex: 999 }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 20,
+            right: 20,
+            display: "flex",
+            gap: 10,
+            zIndex: 1000,
+          }}
+        >
+          <button
+            className="icon-button"
+            onClick={handleCloseLightbox}
+            style={{
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              color: "#fff",
+              padding: "8px",
+              borderRadius: "50%",
+              cursor: "pointer",
+            }}
+          >
             <X size={20} />
           </button>
         </div>
@@ -6668,7 +10290,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
               justifyContent: "center",
               cursor: "pointer",
               zIndex: 1001,
-              transition: "all 0.2s"
+              transition: "all 0.2s",
             }}
             onMouseOver={(e) => {
               e.currentTarget.style.background = "rgba(255,255,255,0.25)";
@@ -6678,7 +10300,9 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
               e.currentTarget.style.background = "rgba(255,255,255,0.12)";
               e.currentTarget.style.transform = "translateY(-50%) scale(1)";
             }}
-            aria-label={language === "es" ? "Imagen anterior" : "Previous image"}
+            aria-label={
+              language === "es" ? "Imagen anterior" : "Previous image"
+            }
           >
             <ChevronLeft size={28} />
           </button>
@@ -6701,11 +10325,19 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
             backdropFilter: "blur(20px)",
             borderRadius: "24px",
             border: "1px solid rgba(255, 255, 255, 0.08)",
-            boxShadow: "0 24px 80px rgba(0,0,0,0.5)"
+            boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
           }}
         >
           {/* Left: Main Image */}
-          <div id="modalContainer" style={{ position: "relative", display: "inline-block", maxWidth: "min(100%, 750px)", maxHeight: "75vh" }}>
+          <div
+            id="modalContainer"
+            style={{
+              position: "relative",
+              display: "inline-block",
+              maxWidth: "min(100%, 750px)",
+              maxHeight: "75vh",
+            }}
+          >
             <img
               ref={modalImgRef}
               src={activeModalUrl}
@@ -6716,27 +10348,27 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 maxHeight: "75vh",
                 display: "block",
                 borderRadius: "16px",
-                boxShadow: "0 12px 48px rgba(0,0,0,0.6)"
+                boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
               }}
             />
             {faceBoxes.map((box, idx) => (
               <Fragment key={idx}>
-                {box.bodyStyle && (
-                  <div style={box.bodyStyle} />
-                )}
+                {box.bodyStyle && <div style={box.bodyStyle} />}
                 <div style={box.faceStyle}>
-                  <div style={{
-                    background: box.isGreen ? "lime" : "red",
-                    color: box.isGreen ? "black" : "white",
-                    fontWeight: "bold",
-                    position: "absolute",
-                    top: "-25px",
-                    left: "-3px",
-                    padding: "2px 6px",
-                    fontSize: "13px",
-                    borderRadius: "4px",
-                    pointerEvents: "none"
-                  }}>
+                  <div
+                    style={{
+                      background: box.isGreen ? "lime" : "red",
+                      color: box.isGreen ? "black" : "white",
+                      fontWeight: "bold",
+                      position: "absolute",
+                      top: "-25px",
+                      left: "-3px",
+                      padding: "2px 6px",
+                      fontSize: "13px",
+                      borderRadius: "4px",
+                      pointerEvents: "none",
+                    }}
+                  >
                     {box.label}
                   </div>
                 </div>
@@ -6745,102 +10377,181 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
           </div>
 
           {/* Right: Bounding box face crops column */}
-          {imgData.faceDetected && imgData.allFaces && imgData.allFaces.length > 0 && (
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-              minWidth: "220px",
-              maxWidth: "280px",
-              maxHeight: "75vh",
-              overflowY: "auto",
-              padding: "16px",
-              background: "rgba(255, 255, 255, 0.05)",
-              borderRadius: "16px",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              alignSelf: "stretch"
-            }}>
-              <h3 style={{
-                color: "#fff",
-                fontSize: "0.95rem",
-                fontWeight: "800",
-                margin: "0 0 4px 0",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px"
-              }}>
-                <Sparkles size={14} style={{ color: "var(--accent, #6366f1)" }} />
-                {language === "es" ? "Detalle de Enfoque" : "Focus Details"}
-              </h3>
-              <p style={{ color: "#aaa", fontSize: "0.75rem", margin: 0 }}>
-                {language === "es" 
-                  ? "Verifica el grado de foco directamente en el rostro:" 
-                  : "Verify sharpness directly on the cropped faces:"}
-              </p>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginTop: "6px" }}>
-                {[...imgData.allFaces]
-                  .sort((a, b) => (a.isPrimary ? -1 : 0) - (b.isPrimary ? -1 : 0) || b.score - a.score)
-                  .map((face, fIdx) => {
-                    const relativeScore = mapRawScoreToPercentage(face.score);
-                  const isSharp = relativeScore >= currentThreshold;
-                  return (
-                    <div
-                      key={fIdx}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "12px",
-                        background: "rgba(0, 0, 0, 0.3)",
-                        borderRadius: "12px",
-                        border: face.isPrimary
-                          ? "2px solid var(--accent, #6366f1)"
-                          : `1px solid ${isSharp ? "rgba(0, 255, 0, 0.15)" : "rgba(255, 0, 0, 0.15)"}`
-                      }}
-                    >
-                      {face.isPrimary && (
-                        <span style={{
-                          fontSize: "0.66rem",
-                          fontWeight: "bold",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                          padding: "2px 8px",
-                          borderRadius: "999px",
-                          background: "var(--accent, #6366f1)",
-                          color: "white"
-                        }}>
-                          ⭐ {language === "es" ? "Principal" : "Main"}
-                        </span>
-                      )}
-                      <FaceCropCanvas imageUrl={activeModalUrl} rect={face.rect} />
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{
-                          fontSize: "0.85rem",
-                          fontWeight: "800",
-                          color: isSharp ? "#4ade80" : "#f87171"
-                        }}>
-                          {relativeScore}%
-                        </span>
-                        <span style={{
-                          fontSize: "0.68rem",
-                          fontWeight: "bold",
-                          textTransform: "uppercase",
-                          padding: "1px 5px",
-                          borderRadius: "4px",
-                          background: isSharp ? "rgba(74, 222, 128, 0.15)" : "rgba(248, 113, 113, 0.15)",
-                          color: isSharp ? "#4ade80" : "#f87171"
-                        }}>
-                          {isSharp ? (language === "es" ? "Nítida" : "Sharp") : (language === "es" ? "Borrosa" : "Blurry")}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+          {imgData.faceDetected &&
+            imgData.allFaces &&
+            imgData.allFaces.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                  minWidth: "220px",
+                  maxWidth: "280px",
+                  maxHeight: "75vh",
+                  overflowY: "auto",
+                  padding: "16px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  borderRadius: "16px",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  alignSelf: "stretch",
+                }}
+              >
+                <h3
+                  style={{
+                    color: "#fff",
+                    fontSize: "0.95rem",
+                    fontWeight: "800",
+                    margin: "0 0 4px 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Sparkles
+                    size={14}
+                    style={{ color: "var(--accent, #6366f1)" }}
+                  />
+                  {language === "es" ? "Detalle de Enfoque" : "Focus Details"}
+                </h3>
+                <p style={{ color: "#aaa", fontSize: "0.75rem", margin: 0 }}>
+                  {language === "es"
+                    ? "Verifica el grado de foco directamente en el rostro:"
+                    : "Verify sharpness directly on the cropped faces:"}
+                </p>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "14px",
+                    marginTop: "6px",
+                  }}
+                >
+                  {imgData.allFaces
+                    .map((f, origIdx) => ({ ...f, origIdx }))
+                    .sort(
+                      (a, b) =>
+                        ((primaryOverrideIndex != null
+                          ? a.origIdx === primaryOverrideIndex
+                          : a.isPrimary)
+                          ? -1
+                          : 0) -
+                          ((primaryOverrideIndex != null
+                            ? b.origIdx === primaryOverrideIndex
+                            : b.isPrimary)
+                            ? -1
+                            : 0) ||
+                        b.score - a.score,
+                    )
+                    .map((face) => {
+                      const relativeScore = mapRawScoreToPercentage(face.score);
+                      const isSharp = relativeScore >= currentThreshold;
+                      const isManualPrimary =
+                        primaryOverrideIndex === face.origIdx;
+                      const isEffectivePrimary =
+                        primaryOverrideIndex != null
+                          ? isManualPrimary
+                          : !!face.isPrimary;
+                      return (
+                        <div
+                          key={face.origIdx}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrimaryOverrides((prev) => {
+                              const next = new Map(prev);
+                              if (next.get(imgData.file.name) === face.origIdx) {
+                                next.delete(imgData.file.name);
+                              } else {
+                                next.set(imgData.file.name, face.origIdx);
+                              }
+                              return next;
+                            });
+                          }}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "12px",
+                            background: "rgba(0, 0, 0, 0.3)",
+                            borderRadius: "12px",
+                            cursor: "pointer",
+                            border: isEffectivePrimary
+                              ? "2px solid var(--accent, #6366f1)"
+                              : `1px solid ${isSharp ? "rgba(0, 255, 0, 0.15)" : "rgba(255, 0, 0, 0.15)"}`,
+                          }}
+                        >
+                          {isEffectivePrimary && (
+                            <span
+                              style={{
+                                fontSize: "0.66rem",
+                                fontWeight: "bold",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.04em",
+                                padding: "2px 8px",
+                                borderRadius: "999px",
+                                background: "var(--accent, #6366f1)",
+                                color: "white",
+                              }}
+                            >
+                              ⭐{" "}
+                              {isManualPrimary
+                                ? language === "es"
+                                  ? "Principal (manual)"
+                                  : "Main (manual)"
+                                : language === "es"
+                                  ? "Principal"
+                                  : "Main"}
+                            </span>
+                          )}
+                          <FaceCropCanvas
+                            imageUrl={activeModalUrl}
+                            rect={face.rect}
+                          />
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "0.85rem",
+                                fontWeight: "800",
+                                color: isSharp ? "#4ade80" : "#f87171",
+                              }}
+                            >
+                              {relativeScore}%
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "0.68rem",
+                                fontWeight: "bold",
+                                textTransform: "uppercase",
+                                padding: "1px 5px",
+                                borderRadius: "4px",
+                                background: isSharp
+                                  ? "rgba(74, 222, 128, 0.15)"
+                                  : "rgba(248, 113, 113, 0.15)",
+                                color: isSharp ? "#4ade80" : "#f87171",
+                              }}
+                            >
+                              {isSharp
+                                ? language === "es"
+                                  ? "Nítida"
+                                  : "Sharp"
+                                : language === "es"
+                                  ? "Borrosa"
+                                  : "Blurry"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* Right Arrow */}
@@ -6867,7 +10578,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
               justifyContent: "center",
               cursor: "pointer",
               zIndex: 1001,
-              transition: "all 0.2s"
+              transition: "all 0.2s",
             }}
             onMouseOver={(e) => {
               e.currentTarget.style.background = "rgba(255,255,255,0.25)";
@@ -6884,34 +10595,60 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
         )}
 
         {activeModalKey && acceptedOverrides.has(activeModalKey) && (
-          <div style={{
-            position: "absolute",
-            top: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1002,
-            background: "#10b981",
-            color: "white",
-            fontWeight: 800,
-            fontSize: "0.9rem",
-            padding: "8px 16px",
-            borderRadius: "999px",
-            boxShadow: "0 6px 20px rgba(16,185,129,0.5)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            pointerEvents: "none"
-          }}>
-            ✅ {language === "es" ? "Incluida manualmente" : "Manually included"}
+          <div
+            style={{
+              position: "absolute",
+              top: 24,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 1002,
+              background: "#10b981",
+              color: "white",
+              fontWeight: 800,
+              fontSize: "0.9rem",
+              padding: "8px 16px",
+              borderRadius: "999px",
+              boxShadow: "0 6px 20px rgba(16,185,129,0.5)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              pointerEvents: "none",
+            }}
+          >
+            ✅{" "}
+            {language === "es" ? "Incluida manualmente" : "Manually included"}
           </div>
         )}
 
-        <div style={{ position: "absolute", bottom: 40, color: "#fff", fontFamily: "var(--font-mono)", fontSize: "0.82rem", textShadow: "0 2px 4px rgba(0,0,0,0.8)", textAlign: "center" }}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: 40,
+            color: "#fff",
+            fontFamily: "var(--font-mono)",
+            fontSize: "0.82rem",
+            textShadow: "0 2px 4px rgba(0,0,0,0.8)",
+            textAlign: "center",
+          }}
+        >
           <strong>{imgData.file.name}</strong>
-          <div style={{ marginTop: 6, display: "flex", justifySelf: "center", gap: 10 }}>
-            <span>Score: {mapRawScoreToPercentage(imgData.score)}%</span>
+          <div
+            style={{
+              marginTop: 6,
+              display: "flex",
+              justifySelf: "center",
+              gap: 10,
+            }}
+          >
+            <span>
+              Score: {mapRawScoreToPercentage(effectiveScore(imgData))}%
+            </span>
             <span>-</span>
-            <span>{imgData.faceDetected ? `${imgData.totalFaces} subject(s)` : "Full Image"}</span>
+            <span>
+              {imgData.faceDetected
+                ? `${imgData.totalFaces} subject(s)`
+                : "Full Image"}
+            </span>
           </div>
           <div style={{ marginTop: 6, fontSize: "0.72rem", opacity: 0.75 }}>
             {language === "es"
@@ -6926,47 +10663,58 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   return (
     <>
       {/* Notice Card for Experimental Feature */}
-      <div style={{
-        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
-        border: "1px solid rgba(99, 102, 241, 0.15)",
-        borderRadius: "16px",
-        padding: "16px 20px",
-        marginBottom: "24px",
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "16px",
-        boxShadow: "0 4px 20px rgba(99, 102, 241, 0.03)"
-      }}>
-        <div style={{
-          background: "var(--accent, #6366f1)",
-          color: "#fff",
-          borderRadius: "12px",
-          padding: "10px",
+      <div
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
+          border: "1px solid rgba(99, 102, 241, 0.15)",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          marginBottom: "24px",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)"
-        }}>
+          alignItems: "flex-start",
+          gap: "16px",
+          boxShadow: "0 4px 20px rgba(99, 102, 241, 0.03)",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--accent, #6366f1)",
+            color: "#fff",
+            borderRadius: "12px",
+            padding: "10px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)",
+          }}
+        >
           <Sparkles size={20} />
         </div>
         <div style={{ flex: 1 }}>
-          <h3 style={{
-            fontSize: "0.95rem",
-            fontWeight: "800",
-            margin: "0 0 4px 0",
-            color: "var(--ink)",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px"
-          }}>
-            {language === "es" ? "🧪 Función Experimental en Desarrollo" : "🧪 Experimental Feature under Development"}
+          <h3
+            style={{
+              fontSize: "0.95rem",
+              fontWeight: "800",
+              margin: "0 0 4px 0",
+              color: "var(--ink)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            {language === "es"
+              ? "🧪 Función Experimental en Desarrollo"
+              : "🧪 Experimental Feature under Development"}
           </h3>
-          <p style={{
-            fontSize: "0.82rem",
-            color: "var(--muted)",
-            lineHeight: "1.45",
-            margin: 0
-          }}>
+          <p
+            style={{
+              fontSize: "0.82rem",
+              color: "var(--muted)",
+              lineHeight: "1.45",
+              margin: 0,
+            }}
+          >
             {language === "es"
               ? "Esta sección de AI Culling está en desarrollo activo y se presenta a modo experimental. Aún requiere ajustes finos, testing exhaustivo y optimizaciones de rendimiento. Siéntete libre de probarla y experimentar con la detección automática de nitidez y ojos cerrados."
               : "This AI Culling section is under active development and is presented as an experimental feature. It still requires fine-tuning, thorough testing, and performance optimization. Feel free to try it out and experiment with automatic sharpness and closed-eye detection."}
@@ -6990,14 +10738,28 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       </section>
 
       <section className="culling-controls">
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <div>
             <h2 style={{ fontSize: "1.18rem", fontWeight: "800", margin: 0 }}>
-              {language === "es" ? "⚙️ Filtros de Análisis AI" : "⚙️ AI Analysis Filters"}
+              {language === "es"
+                ? "⚙️ Filtros de Análisis AI"
+                : "⚙️ AI Analysis Filters"}
             </h2>
-            <p style={{ fontSize: "0.78rem", color: "var(--muted)", margin: "4px 0 0 0" }}>
-              {language === "es" 
-                ? "Ajusta el umbral de nitidez o importa más imágenes." 
+            <p
+              style={{
+                fontSize: "0.78rem",
+                color: "var(--muted)",
+                margin: "4px 0 0 0",
+              }}
+            >
+              {language === "es"
+                ? "Ajusta el umbral de nitidez o importa más imágenes."
                 : "Adjust sharpness threshold or import more images."}
             </p>
           </div>
@@ -7010,26 +10772,28 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                   height: "36px",
                   padding: "0 14px",
                   background: "var(--ink)",
-                  color: "var(--white)"
+                  color: "var(--white)",
                 }}
               >
                 <FolderOpen size={15} style={{ marginRight: 6 }} />
                 {language === "es" ? "Seleccionar Carpeta" : "Select Folder"}
               </button>
             ) : (
-              <div style={{
-                color: "#ef4444",
-                fontSize: "0.82rem",
-                fontWeight: "600",
-                display: "flex",
-                alignItems: "center",
-                background: "rgba(239, 68, 68, 0.06)",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                border: "1px solid rgba(239, 68, 68, 0.15)"
-              }}>
-                {language === "es" 
-                  ? "⚠️ AI Culling requiere Google Chrome o Microsoft Edge." 
+              <div
+                style={{
+                  color: "#ef4444",
+                  fontSize: "0.82rem",
+                  fontWeight: "600",
+                  display: "flex",
+                  alignItems: "center",
+                  background: "rgba(239, 68, 68, 0.06)",
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(239, 68, 68, 0.15)",
+                }}
+              >
+                {language === "es"
+                  ? "⚠️ AI Culling requiere Google Chrome o Microsoft Edge."
                   : "⚠️ AI Culling requires Google Chrome or Microsoft Edge."}
               </div>
             )}
@@ -7038,18 +10802,70 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
         {/* Loading progress */}
         {analyzingProgress && (
-          <div style={{ background: "var(--paper-2)", border: "1px solid var(--line)", padding: "16px", borderRadius: "12px", width: "100%" }}>
-            <span style={{ fontSize: "0.8rem", fontWeight: "700", display: "block", marginBottom: "8px" }}>
+          <div
+            style={{
+              background: "var(--paper-2)",
+              border: "1px solid var(--line)",
+              padding: "16px",
+              borderRadius: "12px",
+              width: "100%",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.8rem",
+                fontWeight: "700",
+                display: "block",
+                marginBottom: "8px",
+              }}
+            >
               {analyzingProgress}
             </span>
-            <div style={{ width: "100%", height: "8px", background: "var(--line-soft)", borderRadius: "4px", overflow: "hidden" }}>
-              <div style={{ width: `${analyzingPercent}%`, height: "100%", background: "var(--accent, #6366f1)", transition: "width 0.1s" }} />
+            <div
+              style={{
+                width: "100%",
+                height: "8px",
+                background: "var(--line-soft)",
+                borderRadius: "4px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${analyzingPercent}%`,
+                  height: "100%",
+                  background: "var(--accent, #6366f1)",
+                  transition: "width 0.1s",
+                }}
+              />
             </div>
             {isAnalyzing && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--muted)", marginTop: "8px", fontFamily: "var(--font-mono)" }}>
-                <span>⏱️ {language === "es" ? "Transcurrido" : "Elapsed"}: {formatDuration(elapsedMs)}</span>
-                {etaMs != null && <span>{language === "es" ? "Restante aprox." : "ETA"}: {formatDuration(etaMs)}</span>}
-                {prevRunMs != null && <span>{language === "es" ? "Anterior" : "Previous"}: {formatDuration(prevRunMs)}</span>}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "0.72rem",
+                  color: "var(--muted)",
+                  marginTop: "8px",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                <span>
+                  ⏱️ {language === "es" ? "Transcurrido" : "Elapsed"}:{" "}
+                  {formatDuration(elapsedMs)}
+                </span>
+                {etaMs != null && (
+                  <span>
+                    {language === "es" ? "Restante aprox." : "ETA"}:{" "}
+                    {formatDuration(etaMs)}
+                  </span>
+                )}
+                {prevRunMs != null && (
+                  <span>
+                    {language === "es" ? "Anterior" : "Previous"}:{" "}
+                    {formatDuration(prevRunMs)}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -7057,40 +10873,112 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
         {/* Resumen de tiempo de la última corrida */}
         {!isAnalyzing && lastRunMs != null && (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", fontSize: "0.75rem", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
-            <span>✅ {language === "es" ? "Última corrida" : "Last run"}: <strong style={{ color: "var(--ink)" }}>{formatDuration(lastRunMs)}</strong></span>
-            {prevRunMs != null && (() => {
-              const delta = lastRunMs - prevRunMs;
-              const faster = delta < 0;
-              return (
-                <span style={{ color: faster ? "#10b981" : delta > 0 ? "#ef4444" : "var(--muted)" }}>
-                  {language === "es" ? "anterior" : "previous"}: {formatDuration(prevRunMs)} ({faster ? "−" : "+"}{formatDuration(Math.abs(delta))})
-                </span>
-              );
-            })()}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              flexWrap: "wrap",
+              fontSize: "0.75rem",
+              color: "var(--muted)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            <span>
+              ✅ {language === "es" ? "Última corrida" : "Last run"}:{" "}
+              <strong style={{ color: "var(--ink)" }}>
+                {formatDuration(lastRunMs)}
+              </strong>
+            </span>
+            {prevRunMs != null &&
+              (() => {
+                const delta = lastRunMs - prevRunMs;
+                const faster = delta < 0;
+                return (
+                  <span
+                    style={{
+                      color: faster
+                        ? "#10b981"
+                        : delta > 0
+                          ? "#ef4444"
+                          : "var(--muted)",
+                    }}
+                  >
+                    {language === "es" ? "anterior" : "previous"}:{" "}
+                    {formatDuration(prevRunMs)} ({faster ? "−" : "+"}
+                    {formatDuration(Math.abs(delta))})
+                  </span>
+                );
+              })()}
           </div>
         )}
 
         {/* AI script loading loader */}
         {isLoadingModel && (
-          <div style={{ fontSize: "0.78rem", color: "var(--muted)", display: "flex", alignItems: "center", gap: "6px" }}>
-            <div className="pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }} />
-            {language === "es" ? "Cargando biblioteca AI (TensorFlow.js)..." : "Loading AI engine (TensorFlow.js)..."}
+          <div
+            style={{
+              fontSize: "0.78rem",
+              color: "var(--muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <div
+              className="pulse"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "var(--accent)",
+              }}
+            />
+            {language === "es"
+              ? "Cargando biblioteca AI (TensorFlow.js)..."
+              : "Loading AI engine (TensorFlow.js)..."}
           </div>
         )}
 
         {modelError && (
-          <div style={{ fontSize: "0.78rem", color: "var(--red)", fontWeight: "600" }}>
+          <div
+            style={{
+              fontSize: "0.78rem",
+              color: "var(--red)",
+              fontWeight: "600",
+            }}
+          >
             ⚠️ {modelError}
           </div>
         )}
 
         {/* Slider & Filter control */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "30px", borderTop: "1px solid var(--line-soft)", paddingTop: "18px" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "30px",
+            borderTop: "1px solid var(--line-soft)",
+            paddingTop: "18px",
+          }}
+        >
           <div style={{ flex: "1", minWidth: "240px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: "700", marginBottom: "6px" }}>
-              <span>{language === "es" ? "Umbral de Aceptación (Nitidez)" : "Acceptance Threshold (Sharpness)"}</span>
-              <span style={{ color: "var(--accent, #6366f1)" }}>{currentThreshold}%</span>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "0.82rem",
+                fontWeight: "700",
+                marginBottom: "6px",
+              }}
+            >
+              <span>
+                {language === "es"
+                  ? "Umbral de Aceptación (Nitidez)"
+                  : "Acceptance Threshold (Sharpness)"}
+              </span>
+              <span style={{ color: "var(--accent, #6366f1)" }}>
+                {currentThreshold}%
+              </span>
             </div>
             <input
               type="range"
@@ -7105,23 +10993,55 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 borderRadius: "3px",
                 outline: "none",
                 cursor: "pointer",
-                accentColor: "var(--accent, #6366f1)"
+                accentColor: "var(--accent, #6366f1)",
               }}
-              aria-label={language === "es" ? "Umbral de nitidez" : "Sharpness threshold"}
+              aria-label={
+                language === "es" ? "Umbral de nitidez" : "Sharpness threshold"
+              }
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", minWidth: "200px" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "flex-end",
+              minWidth: "200px",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                fontSize: "0.82rem",
+                fontWeight: "700",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={eyeCheckEnabled}
                 onChange={handleToggleEyeCheck}
-                style={{ width: 16, height: 16, accentColor: "var(--accent, #6366f1)", cursor: "pointer" }}
+                style={{
+                  width: 16,
+                  height: 16,
+                  accentColor: "var(--accent, #6366f1)",
+                  cursor: "pointer",
+                }}
               />
-              👁️ {language === "es" ? "Detectar ojos cerrados" : "Detect closed eyes"}
+              👁️{" "}
+              {language === "es"
+                ? "Detectar ojos cerrados"
+                : "Detect closed eyes"}
             </label>
-            <span style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: "4px" }}>
+            <span
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--muted)",
+                marginTop: "4px",
+              }}
+            >
               {language === "es"
                 ? "Rechaza fotos nítidas donde el sujeto más nítido tiene los ojos cerrados."
                 : "Rejects sharp photos where the sharpest subject has closed eyes."}
@@ -7137,11 +11057,12 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 padding: "0 12px",
                 border: "1px solid var(--line)",
                 borderRadius: "999px",
-                background: currentFilter === "all" ? "var(--ink)" : "transparent",
+                background:
+                  currentFilter === "all" ? "var(--ink)" : "transparent",
                 color: currentFilter === "all" ? "var(--white)" : "var(--ink)",
                 fontSize: "0.78rem",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
               }}
             >
               {language === "es" ? "Todas" : "All"} ({processedImages.length})
@@ -7154,11 +11075,13 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 padding: "0 12px",
                 border: "1px solid var(--line)",
                 borderRadius: "999px",
-                background: currentFilter === "sharp" ? "var(--ink)" : "transparent",
-                color: currentFilter === "sharp" ? "var(--white)" : "var(--ink)",
+                background:
+                  currentFilter === "sharp" ? "var(--ink)" : "transparent",
+                color:
+                  currentFilter === "sharp" ? "var(--white)" : "var(--ink)",
                 fontSize: "0.78rem",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
               }}
             >
               {language === "es" ? "✅ Nítidas" : "✅ Sharp"} ({sharpCount})
@@ -7171,14 +11094,17 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 padding: "0 12px",
                 border: "1px solid var(--line)",
                 borderRadius: "999px",
-                background: currentFilter === "blurry" ? "var(--ink)" : "transparent",
-                color: currentFilter === "blurry" ? "var(--white)" : "var(--ink)",
+                background:
+                  currentFilter === "blurry" ? "var(--ink)" : "transparent",
+                color:
+                  currentFilter === "blurry" ? "var(--white)" : "var(--ink)",
                 fontSize: "0.78rem",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
               }}
             >
-              {language === "es" ? "❌ Rechazadas" : "❌ Rejected"} ({blurryCount})
+              {language === "es" ? "❌ Rechazadas" : "❌ Rejected"} (
+              {blurryCount})
             </button>
           </div>
         </div>
@@ -7186,22 +11112,41 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
 
       {/* cull execution button */}
       {processedImages.length > 0 && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <div style={{
-              display: "inline-flex",
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginBottom: "20px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
               alignItems: "center",
-              gap: "6px",
-              fontSize: "0.78rem",
-              color: "var(--muted)",
-              background: "var(--paper-2, rgba(0,0,0,0.02))",
-              padding: "6px 12px",
-              borderRadius: "8px",
-              border: "1px solid var(--line-soft)",
-              maxWidth: "360px",
-              textAlign: "right"
-            }}>
-              <HelpCircle size={14} style={{ flexShrink: 0, color: "var(--accent)" }} />
+              gap: "10px",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "0.78rem",
+                color: "var(--muted)",
+                background: "var(--paper-2, rgba(0,0,0,0.02))",
+                padding: "6px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--line-soft)",
+                maxWidth: "360px",
+                textAlign: "right",
+              }}
+            >
+              <HelpCircle
+                size={14}
+                style={{ flexShrink: 0, color: "var(--accent)" }}
+              />
               <span>
                 {language === "es"
                   ? "Mueve físicamente las fotos por debajo del umbral a una subcarpeta 'REJECTED' (o genera un script si no hay soporte nativo)."
@@ -7219,11 +11164,13 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                 fontWeight: "700",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "6px"
+                gap: "6px",
               }}
             >
               <Trash2 size={16} />
-              {language === "es" ? "Iniciar Culling (Rechazar)" : "Start Culling (Reject)"}
+              {language === "es"
+                ? "Iniciar Culling (Rechazar)"
+                : "Start Culling (Reject)"}
             </button>
           </div>
         </div>
@@ -7232,27 +11179,45 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
       {/* Gallery */}
       <section className="culling-gallery">
         {displayed.map((img, index) => {
-          const rel = mapRawScoreToPercentage(img.score);
+          const rel = mapRawScoreToPercentage(effectiveScore(img));
           const overridden = acceptedOverrides.has(img.file.name);
           const isBlurry = rel < currentThreshold;
           const isEyesClosed = eyeCheckEnabled && !!img.eyesClosed && !isBlurry;
           const wouldReject = isBlurry || isEyesClosed;
           const accepted = overridden || !wouldReject;
           return (
-            <article className="culling-card" key={img.file.name} onClick={() => handleOpenLightbox(index)}>
+            <article
+              className="culling-card"
+              key={img.file.name}
+              onClick={() => handleOpenLightbox(index)}
+            >
               <img src={img.thumbUrl} alt={img.file.name} />
-              <div className={`culling-score ${accepted ? "sharp" : "blurry"}`}>{rel}%</div>
-              <span className={`culling-label ${accepted ? "sharp" : "blurry"}`}>
+              <div className={`culling-score ${accepted ? "sharp" : "blurry"}`}>
+                {rel}%
+              </div>
+              <span
+                className={`culling-label ${accepted ? "sharp" : "blurry"}`}
+              >
                 {accepted
-                  ? (overridden && wouldReject
-                      ? (language === "es" ? "✅ Incluida (manual)" : "✅ Included (manual)")
-                      : (language === "es" ? "✅ Nítida" : "✅ Sharp"))
+                  ? overridden && wouldReject
+                    ? language === "es"
+                      ? "✅ Incluida (manual)"
+                      : "✅ Included (manual)"
+                    : language === "es"
+                      ? "✅ Nítida"
+                      : "✅ Sharp"
                   : isBlurry
-                    ? (language === "es" ? "❌ Borrosa" : "❌ Blurry")
-                    : (language === "es" ? "❌ Ojos cerrados" : "❌ Eyes closed")}
+                    ? language === "es"
+                      ? "❌ Borrosa"
+                      : "❌ Blurry"
+                    : language === "es"
+                      ? "❌ Ojos cerrados"
+                      : "❌ Eyes closed"}
               </span>
               <div className="culling-face-text">
-                {img.faceDetected ? `🏃‍♂️ ${img.totalFaces} subject(s)` : "🖼️ Full Image"}
+                {img.faceDetected
+                  ? `🏃‍♂️ ${img.totalFaces} subject(s)`
+                  : "🖼️ Full Image"}
               </div>
               {wouldReject && !overridden && (
                 <button
@@ -7266,7 +11231,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                     padding: "4px 8px",
                     borderRadius: "6px",
                     fontSize: "0.7rem",
-                    fontWeight: "600"
+                    fontWeight: "600",
                   }}
                 >
                   ⬆️ {language === "es" ? "Ésta está bien" : "This is OK"}
@@ -7284,7 +11249,7 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
                     padding: "4px 8px",
                     borderRadius: "6px",
                     fontSize: "0.7rem",
-                    fontWeight: "600"
+                    fontWeight: "600",
                   }}
                 >
                   ↩️ {language === "es" ? "Quitar inclusión" : "Remove"}
@@ -7295,14 +11260,28 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
         })}
 
         {processedImages.length === 0 && (
-          <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "50px 10px", color: "var(--muted)", background: "var(--paper)", border: "1px dashed var(--line)", borderRadius: "16px" }}>
+          <div
+            style={{
+              gridColumn: "1/-1",
+              textAlign: "center",
+              padding: "50px 10px",
+              color: "var(--muted)",
+              background: "var(--paper)",
+              border: "1px dashed var(--line)",
+              borderRadius: "16px",
+            }}
+          >
             <Sparkles size={24} style={{ marginBottom: 10, opacity: 0.7 }} />
             <strong style={{ display: "block", fontSize: "0.95rem" }}>
-              {language === "es" ? "Carga fotos para iniciar el culling" : "Upload pictures to start culling"}
+              {language === "es"
+                ? "Carga fotos para iniciar el culling"
+                : "Upload pictures to start culling"}
             </strong>
-            <span style={{ fontSize: "0.78rem", display: "block", marginTop: 4 }}>
-              {language === "es" 
-                ? "Soporta selección de carpeta nativa en Chrome/Safari o arrastrar fotos directamente." 
+            <span
+              style={{ fontSize: "0.78rem", display: "block", marginTop: 4 }}
+            >
+              {language === "es"
+                ? "Soporta selección de carpeta nativa en Chrome/Safari o arrastrar fotos directamente."
                 : "Supports local directory access picker in Chrome/Safari or dropping photos."}
             </span>
           </div>
@@ -7314,10 +11293,1415 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
     </>
   );
 }
+
+interface CleanerDashboardProps {
+  language: Language;
+  profiles: DashboardSummary[];
+}
+
+function CleanerDashboard({
+  language = "en",
+  profiles,
+}: CleanerDashboardProps) {
+  const [selectedAlbumKey, setSelectedAlbumKey] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [fetchingRemote, setFetchingRemote] = useState(false);
+  const [remotePhotos, setRemotePhotos] = useState<any[]>([]);
+  const [remotePhotoCount, setRemotePhotoCount] = useState<number | null>(null);
+
+  const [localFiles, setLocalFiles] = useState<File[]>([]);
+  const [readingLocal, setReadingLocal] = useState(false);
+  const [localDirName, setLocalDirName] = useState("");
+
+  const [matches, setMatches] = useState<any[]>([]);
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(
+    new Set(),
+  );
+  const [deleteProgress, setDeleteProgress] = useState<{
+    current: number;
+    total: number;
+    isDeleting: boolean;
+  } | null>(null);
+  const [deleteStatuses, setDeleteStatuses] = useState<
+    Record<string, "ready" | "deleting" | "success" | "error">
+  >({});
+
+  const allAlbums = useMemo(() => {
+    const list: Array<{
+      albumId: string;
+      title: string;
+      photosCount: number;
+      profileId: string;
+      profileLabel: string;
+    }> = [];
+    profiles.forEach((profile) => {
+      if (profile.albums) {
+        profile.albums.forEach((album) => {
+          list.push({
+            albumId: album.id,
+            title: album.title,
+            photosCount: album.photos,
+            profileId: profile.id,
+            profileLabel: profile.label,
+          });
+        });
+      }
+    });
+    return list;
+  }, [profiles]);
+
+  const handleAlbumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedAlbumKey(e.target.value);
+    setRemotePhotos([]);
+    setRemotePhotoCount(null);
+    setMatches([]);
+    setSelectedMatches(new Set());
+    setDeleteStatuses({});
+  };
+
+  const comparePhotos = useCallback((localList: File[], remoteList: any[]) => {
+    const remoteMap = new Map<string, any>();
+    remoteList.forEach((photo) => {
+      if (photo.originalFileName) {
+        const normalized = photo.originalFileName.toLowerCase().trim();
+        remoteMap.set(normalized, photo);
+      }
+    });
+
+    const comparedMatches: any[] = [];
+    const initialStatuses: Record<
+      string,
+      "ready" | "deleting" | "success" | "error"
+    > = {};
+
+    localList.forEach((localFile) => {
+      const normalizedLocal = localFile.name.toLowerCase().trim();
+      const matchedRemote = remoteMap.get(normalizedLocal);
+
+      if (matchedRemote) {
+        comparedMatches.push({
+          localFileName: localFile.name,
+          remoteId: matchedRemote.id,
+          remoteThumbnailUrl: matchedRemote.thumbnailUrl || matchedRemote.url,
+          remoteUrl: matchedRemote.url,
+          file: localFile,
+          size: localFile.size,
+          lastModified: localFile.lastModified,
+        });
+        initialStatuses[matchedRemote.id] = "ready";
+      }
+    });
+
+    setMatches(comparedMatches);
+    setDeleteStatuses(initialStatuses);
+    setSelectedMatches(new Set(comparedMatches.map((m) => m.remoteId)));
+  }, []);
+
+  const handleFetchRemotePhotos = async () => {
+    if (!selectedAlbumKey) return;
+    const albumInfo = allAlbums.find(
+      (a) => `${a.profileId}:${a.albumId}` === selectedAlbumKey,
+    );
+    if (!albumInfo) return;
+
+    setFetchingRemote(true);
+    setRemotePhotos([]);
+    setRemotePhotoCount(null);
+    setMatches([]);
+    setSelectedMatches(new Set());
+    setDeleteStatuses({});
+
+    try {
+      const res = await fetch("/api/lumepic/watcher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "list-album-photographs",
+          albumId: albumInfo.albumId,
+          profileId: albumInfo.profileId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(
+          data.error ||
+            (language === "es"
+              ? "Error al cargar fotos de Lumepic"
+              : "Error fetching photos from Lumepic"),
+        );
+        return;
+      }
+
+      const photos = data.photographs || [];
+      setRemotePhotos(photos);
+      setRemotePhotoCount(data.count || 0);
+
+      if (localFiles.length > 0) {
+        comparePhotos(localFiles, photos);
+      }
+    } catch (err) {
+      console.error("Error fetching remote photos:", err);
+      alert(
+        language === "es"
+          ? "Error de red al cargar fotos"
+          : "Network error fetching photos",
+      );
+    } finally {
+      setFetchingRemote(false);
+    }
+  };
+
+  const handleSelectLocalFolder = async () => {
+    const isIframe =
+      typeof window !== "undefined" && window.self !== window.top;
+    const picker = (window as any).showDirectoryPicker;
+
+    if (!picker || isIframe) {
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+      return;
+    }
+
+    try {
+      const handle = await picker({ mode: "read" });
+      setLocalDirName(handle.name);
+      setReadingLocal(true);
+
+      const list: File[] = [];
+      for await (const entry of handle.values()) {
+        if (entry.kind === "file") {
+          const file = await entry.getFile();
+          const ext = file.name.split(".").pop()?.toLowerCase();
+          if (ext && ["jpg", "jpeg", "png", "webp"].includes(ext)) {
+            list.push(file);
+          }
+        }
+      }
+
+      setLocalFiles(list);
+      setReadingLocal(false);
+
+      if (remotePhotos.length > 0) {
+        comparePhotos(list, remotePhotos);
+      }
+    } catch (e: any) {
+      setReadingLocal(false);
+      if (e.name === "AbortError") return;
+      console.warn("showDirectoryPicker failed, falling back to input:", e);
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const filesList = e.target.files ? Array.from(e.target.files) : [];
+    if (filesList.length === 0) return;
+
+    const firstFile = filesList[0];
+    const resolvedDirName =
+      firstFile && firstFile.webkitRelativePath
+        ? firstFile.webkitRelativePath.split("/")[0]
+        : language === "es"
+          ? "Carpeta seleccionada"
+          : "Selected Folder";
+
+    setLocalDirName(resolvedDirName);
+    setReadingLocal(true);
+
+    const list = filesList.filter((file) => {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      return ext && ["jpg", "jpeg", "png", "webp"].includes(ext);
+    });
+
+    setLocalFiles(list);
+    setReadingLocal(false);
+
+    if (remotePhotos.length > 0) {
+      comparePhotos(list, remotePhotos);
+    }
+  };
+
+  const toggleMatchSelect = (remoteId: string) => {
+    const updated = new Set(selectedMatches);
+    if (updated.has(remoteId)) {
+      updated.delete(remoteId);
+    } else {
+      updated.add(remoteId);
+    }
+    setSelectedMatches(updated);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedMatches.size === matches.length) {
+      setSelectedMatches(new Set());
+    } else {
+      setSelectedMatches(new Set(matches.map((m) => m.remoteId)));
+    }
+  };
+
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewSize, setPreviewSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(false);
+  const previewMatch =
+    previewIndex !== null ? (matches[previewIndex] ?? null) : null;
+  const previewFile: File | undefined = previewMatch?.file;
+
+  // Full-resolution preview straight from the local File (no upload, no server).
+  useEffect(() => {
+    setPreviewSize(null);
+    setPreviewZoom(false);
+    if (!previewFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(previewFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [previewFile]);
+
+  useEffect(() => {
+    if (previewIndex !== null && previewIndex >= matches.length) {
+      setPreviewIndex(null);
+    }
+  }, [matches.length, previewIndex]);
+
+  const canToggleMatch = (remoteId: string) => {
+    const status = deleteStatuses[remoteId];
+    return status !== "success" && status !== "deleting";
+  };
+
+  const showPrevPreview = () =>
+    setPreviewIndex((i) => (i !== null && i > 0 ? i - 1 : i));
+  const showNextPreview = () =>
+    setPreviewIndex((i) =>
+      i !== null && i < matches.length - 1 ? i + 1 : i,
+    );
+
+  useEffect(() => {
+    if (previewIndex === null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (key === "escape") setPreviewIndex(null);
+      else if (key === "arrowleft") showPrevPreview();
+      else if (key === "arrowright") showNextPreview();
+      else if (key === "z") setPreviewZoom((z) => !z);
+      else if (key === " " || key === "d") {
+        e.preventDefault();
+        const current = matches[previewIndex];
+        if (current && canToggleMatch(current.remoteId)) {
+          toggleMatchSelect(current.remoteId);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  const handleDeleteSelected = async () => {
+    const toDelete = Array.from(selectedMatches).filter(
+      (id) => deleteStatuses[id] === "ready" || deleteStatuses[id] === "error",
+    );
+    if (toDelete.length === 0) return;
+
+    const confirmed = window.confirm(
+      language === "es"
+        ? `¿Seguro que deseas eliminar estas ${toDelete.length} fotos del álbum de Lumepic?\n\nEsta acción no se puede deshacer y borrará las fotos de la plataforma remota.`
+        : `Are you sure you want to delete these ${toDelete.length} photos from the Lumepic album?\n\nThis action cannot be undone and will delete the photos from the remote platform.`,
+    );
+    if (!confirmed) return;
+
+    setDeleteProgress({ current: 0, total: toDelete.length, isDeleting: true });
+
+    let count = 0;
+    for (const photoId of toDelete) {
+      setDeleteStatuses((prev) => ({ ...prev, [photoId]: "deleting" }));
+      try {
+        const res = await fetch("/api/lumepic/watcher", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "delete-photograph",
+            photographId: photoId,
+          }),
+        });
+
+        if (res.ok) {
+          setDeleteStatuses((prev) => ({ ...prev, [photoId]: "success" }));
+        } else {
+          setDeleteStatuses((prev) => ({ ...prev, [photoId]: "error" }));
+        }
+      } catch (err) {
+        console.error("Delete failed for photo ID:", photoId, err);
+        setDeleteStatuses((prev) => ({ ...prev, [photoId]: "error" }));
+      }
+      count++;
+      setDeleteProgress((prev) => (prev ? { ...prev, current: count } : null));
+    }
+
+    setDeleteProgress((prev) => (prev ? { ...prev, isDeleting: false } : null));
+
+    await handleFetchRemotePhotos();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Local full-resolution preview */}
+      {previewMatch && previewIndex !== null && (
+        <div
+          className="lightbox-backdrop cleaner-preview"
+          onClick={() => setPreviewIndex(null)}
+        >
+          <div
+            className="lightbox-content"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="lightbox-close"
+              onClick={() => setPreviewIndex(null)}
+              aria-label={language === "es" ? "Cerrar" : "Close"}
+            >
+              <X size={20} />
+            </button>
+            <div className="lightbox-grid">
+              <div
+                className={`lightbox-image-wrap${previewZoom ? " is-zoomed" : ""}`}
+                onClick={() => previewUrl && setPreviewZoom((z) => !z)}
+              >
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt={previewMatch.localFileName}
+                    onLoad={(e) =>
+                      setPreviewSize({
+                        width: e.currentTarget.naturalWidth,
+                        height: e.currentTarget.naturalHeight,
+                      })
+                    }
+                  />
+                ) : (
+                  <span style={{ color: "#bbb", fontSize: "0.85rem" }}>
+                    {language === "es"
+                      ? "No se pudo leer el archivo local."
+                      : "Could not read the local file."}
+                  </span>
+                )}
+                {previewUrl && !previewSize && (
+                  <span className="cleaner-preview-loading">
+                    <RefreshCw size={14} className="spin" />
+                    {language === "es"
+                      ? "Cargando original..."
+                      : "Loading original..."}
+                  </span>
+                )}
+                {!previewZoom && previewIndex > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showPrevPreview();
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      background: "rgba(255, 255, 255, 0.85)",
+                      border: "1px solid var(--line)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "var(--ink)",
+                      zIndex: 10,
+                      left: "16px",
+                    }}
+                    aria-label={language === "es" ? "Anterior" : "Previous"}
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                )}
+                {!previewZoom && previewIndex < matches.length - 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showNextPreview();
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      background: "rgba(255, 255, 255, 0.85)",
+                      border: "1px solid var(--line)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "var(--ink)",
+                      zIndex: 10,
+                      right: "16px",
+                    }}
+                    aria-label={language === "es" ? "Siguiente" : "Next"}
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                )}
+              </div>
+              <div className="lightbox-details">
+                <h2>
+                  {language === "es"
+                    ? "Revisar antes de borrar"
+                    : "Review before deleting"}
+                </h2>
+                {(() => {
+                  const status =
+                    deleteStatuses[previewMatch.remoteId] || "ready";
+                  const isSelected = selectedMatches.has(previewMatch.remoteId);
+                  const toggleable = canToggleMatch(previewMatch.remoteId);
+                  const color =
+                    status === "success"
+                      ? "#10b981"
+                      : isSelected
+                        ? "var(--danger, #ef4444)"
+                        : "#10b981";
+                  const label =
+                    status === "success"
+                      ? language === "es"
+                        ? "Ya eliminada de Lumepic"
+                        : "Already deleted from Lumepic"
+                      : status === "deleting"
+                        ? language === "es"
+                          ? "Eliminando..."
+                          : "Deleting..."
+                        : isSelected
+                          ? language === "es"
+                            ? "Marcada para borrar"
+                            : "Marked for deletion"
+                          : language === "es"
+                            ? "Se conserva"
+                            : "Will be kept";
+                  return (
+                    <div
+                      className="lightbox-plate"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                        borderColor: color,
+                      }}
+                    >
+                      <strong style={{ color }}>{label}</strong>
+                      {toggleable && (
+                        <button
+                          onClick={() =>
+                            toggleMatchSelect(previewMatch.remoteId)
+                          }
+                          className="text-button"
+                          style={{
+                            padding: "8px 12px",
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            background: isSelected
+                              ? "var(--paper)"
+                              : "var(--danger, #ef4444)",
+                            color: isSelected ? "var(--ink)" : "#fff",
+                            border: isSelected
+                              ? "1px solid var(--line)"
+                              : "1px solid var(--danger, #ef4444)",
+                          }}
+                        >
+                          {isSelected ? (
+                            <>
+                              <Check size={14} />
+                              {language === "es"
+                                ? "Conservar (desmarcar)"
+                                : "Keep (unmark)"}
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 size={14} />
+                              {language === "es"
+                                ? "Marcar para borrar"
+                                : "Mark for deletion"}
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+                <div className="lightbox-list">
+                  <div>
+                    <span>{language === "es" ? "Archivo" : "File"}</span>
+                    <strong style={{ wordBreak: "break-all" }}>
+                      {previewMatch.localFileName}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>{language === "es" ? "Resolución" : "Resolution"}</span>
+                    <strong>
+                      {previewSize
+                        ? `${previewSize.width} × ${previewSize.height} (${((previewSize.width * previewSize.height) / 1e6).toFixed(1)} MP)`
+                        : "…"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>{language === "es" ? "Peso" : "Size"}</span>
+                    <strong>
+                      {(previewMatch.size / (1024 * 1024)).toFixed(2)} MB
+                    </strong>
+                  </div>
+                  <div>
+                    <span>{language === "es" ? "Modificada" : "Modified"}</span>
+                    <strong>
+                      {new Date(previewMatch.lastModified).toLocaleString(
+                        language === "es" ? "es-AR" : "en-US",
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>{language === "es" ? "Posición" : "Position"}</span>
+                    <strong>
+                      {previewIndex + 1} / {matches.length}
+                    </strong>
+                  </div>
+                </div>
+                {previewMatch.remoteThumbnailUrl && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <img
+                      src={previewMatch.remoteThumbnailUrl}
+                      alt="Lumepic"
+                      style={{
+                        width: "96px",
+                        height: "64px",
+                        objectFit: "cover",
+                        borderRadius: "8px",
+                        border: "1px solid var(--line)",
+                      }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+                        {language === "es" ? "En Lumepic" : "On Lumepic"} · ID{" "}
+                        {previewMatch.remoteId.slice(0, 8)}
+                      </span>
+                      {previewMatch.remoteUrl && (
+                        <a
+                          href={previewMatch.remoteUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            fontSize: "0.78rem",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <ExternalLink size={12} />
+                          {language === "es" ? "Abrir versión de Lumepic" : "Open Lumepic version"}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <p
+                  style={{
+                    marginTop: "auto",
+                    fontSize: "0.72rem",
+                    color: "var(--muted)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {language === "es"
+                    ? "Clic en la foto o Z: zoom 100% · ← → navegar · Espacio/D: marcar o desmarcar · Esc: cerrar"
+                    : "Click photo or Z: 100% zoom · ← → navigate · Space/D: mark or unmark · Esc: close"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Title block */}
+      <div
+        style={{
+          background: "var(--paper)",
+          border: "1px solid var(--line)",
+          borderRadius: "16px",
+          padding: "24px",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "1.5rem",
+            fontWeight: "700",
+            marginBottom: "8px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}
+        >
+          <Trash2 size={24} style={{ color: "var(--danger, #ef4444)" }} />
+          {language === "es"
+            ? "Limpiador de Álbum Lumepic"
+            : "Lumepic Album Cleaner"}
+        </h2>
+        <p
+          style={{
+            color: "var(--muted)",
+            fontSize: "0.88rem",
+            lineHeight: "1.4",
+          }}
+        >
+          {language === "es"
+            ? "Selecciona un álbum remoto y una carpeta local. El sistema comparará los archivos por nombre original y te permitirá eliminar en masa del álbum remoto las fotos que tengas localmente (por ejemplo, si querés excluir descartes)."
+            : "Select a remote album and a local folder. The system will compare files by original filename and allow you to bulk delete from the remote album the photos you have locally (e.g. if you want to exclude discarded shots)."}
+        </p>
+      </div>
+
+      {/* Grid selector step */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: "20px",
+        }}
+      >
+        {/* Step 1: Album selection */}
+        <div
+          style={{
+            background: "var(--paper)",
+            border: "1px solid var(--line)",
+            borderRadius: "16px",
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "1rem",
+              fontWeight: "600",
+              borderBottom: "1px solid var(--line)",
+              paddingBottom: "8px",
+              color: "var(--accent)",
+            }}
+          >
+            1.{" "}
+            {language === "es"
+              ? "Seleccionar Álbum de Lumepic"
+              : "Select Lumepic Album"}
+          </h3>
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "0.75rem",
+                fontWeight: "500",
+                color: "var(--muted)",
+                marginBottom: "6px",
+              }}
+            >
+              {language === "es" ? "Álbum de Destino" : "Target Album"}
+            </label>
+            <select
+              value={selectedAlbumKey}
+              onChange={handleAlbumChange}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: "8px",
+                background: "var(--paper-2)",
+                border: "1px solid var(--line)",
+                color: "var(--foreground)",
+                fontSize: "0.85rem",
+                outline: "none",
+              }}
+            >
+              <option value="">
+                {language === "es"
+                  ? "-- Selecciona un álbum --"
+                  : "-- Select an album --"}
+              </option>
+              {allAlbums.map((album) => (
+                <option
+                  key={`${album.profileId}:${album.albumId}`}
+                  value={`${album.profileId}:${album.albumId}`}
+                >
+                  {album.profileLabel} - {album.title} ({album.photosCount}{" "}
+                  fotos)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedAlbumKey && (
+            <button
+              onClick={handleFetchRemotePhotos}
+              disabled={fetchingRemote}
+              className="text-button primary"
+              style={{
+                width: "100%",
+                cursor: "pointer",
+                opacity: fetchingRemote ? 0.7 : 1,
+              }}
+            >
+              <RefreshCw size={14} className={fetchingRemote ? "spin" : ""} />
+              {fetchingRemote
+                ? language === "es"
+                  ? "Cargando fotos..."
+                  : "Loading photos..."
+                : language === "es"
+                  ? "Escanear Fotos de Lumepic"
+                  : "Scan Lumepic Photos"}
+            </button>
+          )}
+
+          {remotePhotoCount !== null && (
+            <div
+              style={{
+                padding: "8px 12px",
+                background: "rgba(16, 185, 129, 0.1)",
+                border: "1px solid rgba(16, 185, 129, 0.2)",
+                borderRadius: "8px",
+                color: "#10b981",
+                fontSize: "0.78rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <CheckCircle2 size={14} />
+              <span>
+                {language === "es"
+                  ? `${remotePhotoCount} fotos remotas indexadas.`
+                  : `${remotePhotoCount} remote photos indexed.`}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: Local folder selection */}
+        <div
+          style={{
+            background: "var(--paper)",
+            border: "1px solid var(--line)",
+            borderRadius: "16px",
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "1rem",
+              fontWeight: "600",
+              borderBottom: "1px solid var(--line)",
+              paddingBottom: "8px",
+              color: "var(--accent)",
+            }}
+          >
+            2.{" "}
+            {language === "es"
+              ? "Seleccionar Carpeta Local de Exclusión"
+              : "Select Local Exclusion Folder"}
+          </h3>
+          <p style={{ color: "var(--muted)", fontSize: "0.78rem" }}>
+            {language === "es"
+              ? "Selecciona la carpeta en tu computadora donde están las fotos que deseas borrar de Lumepic."
+              : "Select the folder on your computer where the photos you want to delete from Lumepic are located."}
+          </p>
+
+          <button
+            onClick={handleSelectLocalFolder}
+            disabled={readingLocal}
+            className="text-button"
+            style={{
+              width: "100%",
+              cursor: "pointer",
+              opacity: readingLocal ? 0.7 : 1,
+            }}
+          >
+            <FolderOpen size={14} />
+            {readingLocal
+              ? language === "es"
+                ? "Escaneando..."
+                : "Scanning..."
+              : localDirName
+                ? language === "es"
+                  ? `Carpeta: ${localDirName}`
+                  : `Folder: ${localDirName}`
+                : language === "es"
+                  ? "Seleccionar Carpeta"
+                  : "Select Folder"}
+          </button>
+
+          {localFiles.length > 0 && (
+            <div
+              style={{
+                padding: "8px 12px",
+                background: "rgba(99, 102, 241, 0.1)",
+                border: "1px solid rgba(99, 102, 241, 0.2)",
+                borderRadius: "8px",
+                color: "#6366f1",
+                fontSize: "0.78rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <Images size={14} />
+              <span>
+                {language === "es"
+                  ? `${localFiles.length} fotos locales encontradas.`
+                  : `${localFiles.length} local photos found.`}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* KPI Stats bar */}
+      {(remotePhotoCount !== null || localFiles.length > 0) && (
+        <section
+          className="kpi-grid"
+          aria-label="Cleaner results summary"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "16px",
+          }}
+        >
+          <div
+            className="kpi-card"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--line)",
+              borderRadius: "16px",
+              padding: "16px",
+            }}
+          >
+            <p
+              className="eyebrow"
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+              }}
+            >
+              {language === "es" ? "Fotos Remotas" : "Remote Photos"}
+            </p>
+            <strong style={{ fontSize: "1.5rem", fontWeight: "700" }}>
+              {remotePhotoCount ?? 0}
+            </strong>
+          </div>
+          <div
+            className="kpi-card"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--line)",
+              borderRadius: "16px",
+              padding: "16px",
+            }}
+          >
+            <p
+              className="eyebrow"
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+              }}
+            >
+              {language === "es" ? "Fotos Locales" : "Local Photos"}
+            </p>
+            <strong style={{ fontSize: "1.5rem", fontWeight: "700" }}>
+              {localFiles.length}
+            </strong>
+          </div>
+          <div
+            className="kpi-card"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--line)",
+              borderRadius: "16px",
+              padding: "16px",
+            }}
+          >
+            <p
+              className="eyebrow"
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+              }}
+            >
+              {language === "es"
+                ? "Coincidencias (A Borrar)"
+                : "Matches (To Delete)"}
+            </p>
+            <strong
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "700",
+                color:
+                  matches.length > 0
+                    ? "var(--danger, #ef4444)"
+                    : "var(--muted)",
+              }}
+            >
+              {matches.length}
+            </strong>
+          </div>
+          <div
+            className="kpi-card"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--line)",
+              borderRadius: "16px",
+              padding: "16px",
+            }}
+          >
+            <p
+              className="eyebrow"
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+              }}
+            >
+              {language === "es" ? "Seleccionadas" : "Selected"}
+            </p>
+            <strong
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "700",
+                color:
+                  selectedMatches.size > 0 ? "var(--accent)" : "var(--muted)",
+              }}
+            >
+              {selectedMatches.size}
+            </strong>
+          </div>
+        </section>
+      )}
+
+      {/* Comparison Results Card */}
+      {remotePhotoCount !== null && localFiles.length > 0 && (
+        <div
+          style={{
+            background: "var(--paper)",
+            border: "1px solid var(--line)",
+            borderRadius: "16px",
+            padding: "20px",
+          }}
+        >
+          {/* Header comparison list */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "12px",
+              borderBottom: "1px solid var(--line)",
+              paddingBottom: "12px",
+              marginBottom: "20px",
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: "600" }}>
+                {language === "es" ? "Fotos a Eliminar" : "Photos to Delete"}
+              </h3>
+              <p style={{ color: "var(--muted)", fontSize: "0.78rem" }}>
+                {language === "es"
+                  ? "Se listan las fotos locales que existen en el álbum remoto. Marcá las que querés borrar definitivamente."
+                  : "Listing local photos that exist in the remote album. Check the ones you want to permanently delete."}
+              </p>
+            </div>
+            {matches.length > 0 && (
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button
+                  onClick={toggleSelectAll}
+                  className="text-button"
+                  style={{
+                    padding: "8px 12px",
+                    fontSize: "0.78rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  {selectedMatches.size === matches.length
+                    ? language === "es"
+                      ? "Deseleccionar Todo"
+                      : "Deselect All"
+                    : language === "es"
+                      ? "Seleccionar Todo"
+                      : "Select All"}
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={
+                    selectedMatches.size === 0 || deleteProgress?.isDeleting
+                  }
+                  className="text-button"
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "0.78rem",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    background: "var(--danger, #ef4444)",
+                    color: "#fff",
+                    border: "1px solid var(--danger, #ef4444)",
+                    opacity:
+                      selectedMatches.size === 0 || deleteProgress?.isDeleting
+                        ? 0.5
+                        : 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Trash2 size={12} />
+                  {language === "es"
+                    ? `Eliminar (${selectedMatches.size}) de Lumepic`
+                    : `Delete (${selectedMatches.size}) from Lumepic`}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Delete progress bar */}
+          {deleteProgress && (
+            <div
+              style={{
+                padding: "16px",
+                background: "var(--paper-2)",
+                borderRadius: "10px",
+                marginBottom: "20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "0.78rem",
+                  fontWeight: "600",
+                }}
+              >
+                <span>
+                  {deleteProgress.isDeleting
+                    ? language === "es"
+                      ? "Eliminando fotos remotas..."
+                      : "Deleting remote photos..."
+                    : language === "es"
+                      ? "Proceso finalizado"
+                      : "Process finished"}
+                </span>
+                <span>
+                  {deleteProgress.current} / {deleteProgress.total}
+                </span>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "6px",
+                  background: "var(--line)",
+                  borderRadius: "3px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${(deleteProgress.current / deleteProgress.total) * 100}%`,
+                    height: "100%",
+                    background: "var(--danger, #ef4444)",
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Matches Grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+              gap: "16px",
+            }}
+          >
+            {matches.map((match, index) => {
+              const status = deleteStatuses[match.remoteId] || "ready";
+              const isSelected = selectedMatches.has(match.remoteId);
+
+              let statusLabel = "";
+              let statusColor = "";
+              if (status === "ready") {
+                statusLabel = language === "es" ? "Listo para borrar" : "Ready";
+                statusColor = "#eab308";
+              } else if (status === "deleting") {
+                statusLabel =
+                  language === "es" ? "Eliminando..." : "Deleting...";
+                statusColor = "#3b82f6";
+              } else if (status === "success") {
+                statusLabel = language === "es" ? "Eliminado" : "Deleted";
+                statusColor = "#10b981";
+              } else if (status === "error") {
+                statusLabel = language === "es" ? "Error" : "Failed";
+                statusColor = "#ef4444";
+              }
+
+              return (
+                <div
+                  key={match.remoteId}
+                  style={{
+                    background: "var(--paper-2)",
+                    border: isSelected
+                      ? "1px solid var(--danger, #ef4444)"
+                      : "1px solid var(--line)",
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    position: "relative",
+                    transition: "all 0.2s ease",
+                    opacity: status === "success" ? 0.6 : 1,
+                  }}
+                >
+                  {status !== "success" && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleMatchSelect(match.remoteId)}
+                      disabled={status === "deleting"}
+                      style={{
+                        position: "absolute",
+                        top: "10px",
+                        left: "10px",
+                        zIndex: 10,
+                        width: "18px",
+                        height: "18px",
+                        cursor: "pointer",
+                      }}
+                    />
+                  )}
+
+                  {/* Thumbnail */}
+                  <div
+                    onClick={() => setPreviewIndex(index)}
+                    title={
+                      language === "es"
+                        ? "Ver original local en alta"
+                        : "View local original in full resolution"
+                    }
+                    style={{
+                      position: "relative",
+                      width: "100%",
+                      paddingTop: "66.6%",
+                      background: "#000",
+                      overflow: "hidden",
+                      cursor: "zoom-in",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        right: "8px",
+                        bottom: "8px",
+                        zIndex: 2,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        padding: "3px 7px",
+                        borderRadius: "999px",
+                        background: "rgba(0, 0, 0, 0.6)",
+                        color: "#fff",
+                        fontSize: "0.65rem",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Eye size={11} />
+                      {language === "es" ? "Ver en alta" : "View HD"}
+                    </span>
+                    {match.remoteThumbnailUrl ? (
+                      <img
+                        src={match.remoteThumbnailUrl}
+                        alt={match.localFileName}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        <Image size={32} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info details */}
+                  <div
+                    style={{
+                      padding: "12px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                      flexGrow: 1,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.8rem",
+                        fontWeight: "600",
+                        wordBreak: "break-all",
+                        lineClamp: 1,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 1,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                      title={match.localFileName}
+                    >
+                      {match.localFileName}
+                    </span>
+                    <span
+                      style={{ fontSize: "0.68rem", color: "var(--muted)" }}
+                    >
+                      ID: {match.remoteId.slice(0, 8)}...
+                    </span>
+                    <div
+                      style={{
+                        marginTop: "auto",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          fontSize: "0.7rem",
+                          fontWeight: "600",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: statusColor,
+                          }}
+                        />
+                        {statusLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {matches.length === 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "40px",
+                color: "var(--muted)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <AlertTriangle size={32} />
+              <strong>
+                {language === "es"
+                  ? "No se encontraron coincidencias"
+                  : "No matches found"}
+              </strong>
+              <p style={{ fontSize: "0.78rem" }}>
+                {language === "es"
+                  ? "Las fotos de la carpeta local no coinciden con ningún nombre de archivo original en el álbum remoto."
+                  : "The photos in the local folder do not match any original filenames in the remote album."}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Hidden input for browsers without showDirectoryPicker */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileInputChange}
+        style={{ display: "none" }}
+        {...({
+          webkitdirectory: "",
+          directory: "",
+          multiple: true,
+        } as any)}
+      />
+    </div>
+  );
+}
+
 // Helper to resolve a photo's date
-function getPhotoDate(photo: SalePhotograph, sale: Sale, albumMap: Record<string, AlbumInsight>): string {
+function getPhotoDate(
+  photo: SalePhotograph,
+  sale: Sale,
+  albumMap: Record<string, AlbumInsight>,
+): string {
   if (photo.takenDate) {
-    if (typeof photo.takenDate === "string" && photo.takenDate.length >= 10 && photo.takenDate.includes("-")) {
+    if (
+      typeof photo.takenDate === "string" &&
+      photo.takenDate.length >= 10 &&
+      photo.takenDate.includes("-")
+    ) {
       const parts = photo.takenDate.split("T")[0];
       if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) {
         return parts;
@@ -7331,7 +12715,9 @@ function getPhotoDate(photo: SalePhotograph, sale: Sale, albumMap: Record<string
     } catch (_) {}
   }
   if (photo.originalFileName) {
-    const match = photo.originalFileName.match(/(20[23]\d)[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])(?!\d)/);
+    const match = photo.originalFileName.match(
+      /(20[23]\d)[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])(?!\d)/,
+    );
     if (match) {
       return `${match[1]}-${match[2]}-${match[3]}`;
     }
@@ -7358,14 +12744,20 @@ function getPhotoDate(photo: SalePhotograph, sale: Sale, albumMap: Record<string
 
 interface EventsDashboardProps {
   customEvents: CustomEvent[];
-  onSaveEvent: (event: CustomEvent, subEventHandles?: Record<string, FileSystemDirectoryHandle | null>) => void;
+  onSaveEvent: (
+    event: CustomEvent,
+    subEventHandles?: Record<string, FileSystemDirectoryHandle | null>,
+  ) => void;
   onDeleteEvent: (id: string) => void;
   allProfiles: DashboardSummary[];
   language?: Language;
   onLinkEventFolder: (eventId: string) => Promise<void>;
   onUnlinkEventFolder: (eventId: string) => Promise<void>;
   onLinkSubEventFolder: (eventId: string, subEventId: string) => Promise<void>;
-  onUnlinkSubEventFolder: (eventId: string, subEventId: string) => Promise<void>;
+  onUnlinkSubEventFolder: (
+    eventId: string,
+    subEventId: string,
+  ) => Promise<void>;
 }
 
 function EventsDashboard({
@@ -7377,10 +12769,11 @@ function EventsDashboard({
   onLinkEventFolder,
   onUnlinkEventFolder,
   onLinkSubEventFolder,
-  onUnlinkSubEventFolder
+  onUnlinkSubEventFolder,
 }: EventsDashboardProps) {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [selectedSubEventFilter, setSelectedSubEventFilter] = useState<string>("all");
+  const [selectedSubEventFilter, setSelectedSubEventFilter] =
+    useState<string>("all");
   const userHasSelectedEventRef = useRef(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -7394,17 +12787,19 @@ function EventsDashboard({
   const [formName, setFormName] = useState("");
   const [formAlbumIds, setFormAlbumIds] = useState<string[]>([]);
   const [formSubEvents, setFormSubEvents] = useState<CustomSubEvent[]>([]);
-  
+
   // Temporary map to hold selected handles for new/edited sub-events before save is clicked
-  const [tempSubeventHandles, setTempSubeventHandles] = useState<Record<string, FileSystemDirectoryHandle | null>>({});
+  const [tempSubeventHandles, setTempSubeventHandles] = useState<
+    Record<string, FileSystemDirectoryHandle | null>
+  >({});
 
   const t = TRANSLATIONS[language];
 
   // Map of all albums in the system for quick title/date lookups
   const albumMap = useMemo(() => {
     const map: Record<string, AlbumInsight & { profileLabel: string }> = {};
-    allProfiles.forEach(profile => {
-      profile.albums.forEach(album => {
+    allProfiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
         map[album.id] = { ...album, profileLabel: profile.label };
       });
     });
@@ -7415,7 +12810,7 @@ function EventsDashboard({
     const getEventDate = (evt: CustomEvent) => {
       let latestTime = 0;
       if (evt.subEvents && evt.subEvents.length > 0) {
-        evt.subEvents.forEach(sub => {
+        evt.subEvents.forEach((sub) => {
           if (sub.date) {
             const t = new Date(sub.date + "T00:00:00").getTime();
             if (!isNaN(t) && t > latestTime) latestTime = t;
@@ -7423,7 +12818,7 @@ function EventsDashboard({
         });
       }
       if (evt.albumIds && evt.albumIds.length > 0) {
-        evt.albumIds.forEach(albumId => {
+        evt.albumIds.forEach((albumId) => {
           const alb = albumMap[albumId];
           if (alb && alb.createdAt) {
             const t = new Date(alb.createdAt).getTime();
@@ -7438,7 +12833,7 @@ function EventsDashboard({
   }, [customEvents, albumMap]);
 
   const selectedEvent = useMemo(() => {
-    return sortedCustomEvents.find(e => e.id === selectedEventId) || null;
+    return sortedCustomEvents.find((e) => e.id === selectedEventId) || null;
   }, [sortedCustomEvents, selectedEventId]);
 
   // Auto-select first event if none is selected, and re-evaluate when dashboard data (and thus dates) becomes available
@@ -7473,13 +12868,17 @@ function EventsDashboard({
     const newSub: CustomSubEvent = {
       id: Math.random().toString(36).substring(2, 9),
       name: "",
-      date: new Date().toISOString().split("T")[0]
+      date: new Date().toISOString().split("T")[0],
     };
     setFormSubEvents([...formSubEvents, newSub]);
   };
 
   // Update Sub-event field
-  const handleUpdateSubEvent = (idx: number, field: keyof CustomSubEvent, value: any) => {
+  const handleUpdateSubEvent = (
+    idx: number,
+    field: keyof CustomSubEvent,
+    value: any,
+  ) => {
     const updated = [...formSubEvents];
     updated[idx] = { ...updated[idx], [field]: value };
     setFormSubEvents(updated);
@@ -7489,7 +12888,7 @@ function EventsDashboard({
   const handleRemoveSubEvent = (idx: number) => {
     const sub = formSubEvents[idx];
     if (sub) {
-      setTempSubeventHandles(prev => {
+      setTempSubeventHandles((prev) => {
         const cpy = { ...prev };
         delete cpy[sub.id];
         return cpy;
@@ -7498,18 +12897,23 @@ function EventsDashboard({
     setFormSubEvents(formSubEvents.filter((_, i) => i !== idx));
   };
 
-  const handleLinkSubEventFolderInForm = async (idx: number, subEventId: string) => {
+  const handleLinkSubEventFolderInForm = async (
+    idx: number,
+    subEventId: string,
+  ) => {
     try {
       if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
-        alert(language === "es"
-          ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
-          : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.");
+        alert(
+          language === "es"
+            ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
+            : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.",
+        );
         return;
       }
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
       if (handle) {
-        setTempSubeventHandles(prev => ({ ...prev, [subEventId]: handle }));
+        setTempSubeventHandles((prev) => ({ ...prev, [subEventId]: handle }));
         handleUpdateSubEvent(idx, "localDirName", handle.name);
       }
     } catch (err: any) {
@@ -7519,15 +12923,18 @@ function EventsDashboard({
     }
   };
 
-  const handleUnlinkSubEventFolderInForm = (idx: number, subEventId: string) => {
-    setTempSubeventHandles(prev => ({ ...prev, [subEventId]: null }));
+  const handleUnlinkSubEventFolderInForm = (
+    idx: number,
+    subEventId: string,
+  ) => {
+    setTempSubeventHandles((prev) => ({ ...prev, [subEventId]: null }));
     handleUpdateSubEvent(idx, "localDirName", null);
   };
 
   // Toggle Album selection
   const handleToggleAlbum = (albumId: string) => {
     if (formAlbumIds.includes(albumId)) {
-      setFormAlbumIds(formAlbumIds.filter(id => id !== albumId));
+      setFormAlbumIds(formAlbumIds.filter((id) => id !== albumId));
     } else {
       setFormAlbumIds([...formAlbumIds, albumId]);
     }
@@ -7537,11 +12944,19 @@ function EventsDashboard({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
-      alert(language === "es" ? "Por favor ingresa un nombre para el evento." : "Please enter a name for the event.");
+      alert(
+        language === "es"
+          ? "Por favor ingresa un nombre para el evento."
+          : "Please enter a name for the event.",
+      );
       return;
     }
     if (formAlbumIds.length === 0) {
-      alert(language === "es" ? "Por favor selecciona al menos un álbum." : "Please select at least one album.");
+      alert(
+        language === "es"
+          ? "Por favor selecciona al menos un álbum."
+          : "Please select at least one album.",
+      );
       return;
     }
 
@@ -7549,11 +12964,15 @@ function EventsDashboard({
       id: isEditing && selectedEvent ? selectedEvent.id : `evt-${Date.now()}`,
       name: formName.trim(),
       albumIds: formAlbumIds,
-      subEvents: formSubEvents.map(sub => ({
+      subEvents: formSubEvents.map((sub) => ({
         ...sub,
-        localDirName: tempSubeventHandles[sub.id] !== undefined ? (tempSubeventHandles[sub.id]?.name || null) : sub.localDirName
+        localDirName:
+          tempSubeventHandles[sub.id] !== undefined
+            ? tempSubeventHandles[sub.id]?.name || null
+            : sub.localDirName,
       })),
-      localDirName: isEditing && selectedEvent ? selectedEvent.localDirName : null
+      localDirName:
+        isEditing && selectedEvent ? selectedEvent.localDirName : null,
     };
 
     onSaveEvent(eventToSave, tempSubeventHandles);
@@ -7569,12 +12988,14 @@ function EventsDashboard({
 
     // 1. Gather all sales matching the event's albumIds
     const salesList: Sale[] = [];
-    allProfiles.forEach(profile => {
-      profile.sales.forEach(sale => {
+    allProfiles.forEach((profile) => {
+      profile.sales.forEach((sale) => {
         // Match by albumId in photographs
-        const matchesPhotoAlbum = sale.photographs?.some(p => selectedEvent.albumIds.includes(p.albumId));
+        const matchesPhotoAlbum = sale.photographs?.some((p) =>
+          selectedEvent.albumIds.includes(p.albumId),
+        );
         // Match by album title
-        const matchesAlbumTitle = selectedEvent.albumIds.some(aid => {
+        const matchesAlbumTitle = selectedEvent.albumIds.some((aid) => {
           const alb = albumMap[aid];
           return alb && isAlbumMatch(sale.album, alb.title);
         });
@@ -7616,7 +13037,7 @@ function EventsDashboard({
     const subEventMap: Record<string, SubEventData> = {};
     const subEventAlbumsMap: Record<string, Set<string>> = {};
 
-    selectedEvent.subEvents.forEach(sub => {
+    selectedEvent.subEvents.forEach((sub) => {
       subEventMap[sub.date] = {
         id: sub.id,
         name: sub.name,
@@ -7638,15 +13059,16 @@ function EventsDashboard({
           publishedPhotos: 0,
           photos: 0,
           avgOrder: 0,
-          conversion: 0
-        }
+          conversion: 0,
+        },
       };
       subEventAlbumsMap[sub.date] = new Set<string>();
     });
 
     const unclassifiedAlbums = new Set<string>();
     const unclassified = {
-      name: language === "es" ? "Otros / Sin clasificar" : "Others / Unclassified",
+      name:
+        language === "es" ? "Otros / Sin clasificar" : "Others / Unclassified",
       date: "",
       revenue: 0,
       salesCount: 0,
@@ -7664,8 +13086,8 @@ function EventsDashboard({
         publishedPhotos: 0,
         photos: 0,
         avgOrder: 0,
-        conversion: 0
-      }
+        conversion: 0,
+      },
     };
 
     let totalRevenue = 0;
@@ -7677,19 +13099,19 @@ function EventsDashboard({
     let totalPhotosSold = 0;
 
     // 3. Process each sale
-    salesList.forEach(sale => {
+    salesList.forEach((sale) => {
       if (sale.isComped) return;
 
       totalRevenue += sale.total;
       totalGrossRevenue += sale.grossTotal;
       totalFees += sale.fees;
-      totalStripeFee += (sale.stripeFee || 0);
+      totalStripeFee += sale.stripeFee || 0;
       totalDiscounts += sale.discount;
       totalSalesCount += 1;
       totalPhotosSold += sale.photos;
 
       let matchedAlbumId = "";
-      selectedEvent.albumIds.forEach(aid => {
+      selectedEvent.albumIds.forEach((aid) => {
         const alb = albumMap[aid];
         if (alb && isAlbumMatch(sale.album, alb.title)) {
           matchedAlbumId = aid;
@@ -7702,7 +13124,7 @@ function EventsDashboard({
         const allocations: Record<string, number> = {}; // date -> count
         let unclassifiedCount = 0;
 
-        photos.forEach(p => {
+        photos.forEach((p) => {
           const photoDate = getPhotoDate(p, sale, albumMap);
           if (photoDate && subEventMap[photoDate]) {
             allocations[photoDate] = (allocations[photoDate] || 0) + 1;
@@ -7731,7 +13153,8 @@ function EventsDashboard({
           sub.totals.subtotal += (sale.grossTotal + sale.discount) * ratio;
           sub.totals.discounts += sale.discount * ratio;
           sub.totals.fees += (sale.fees - (sale.stripeFee || 0)) * ratio;
-          sub.totals.stripeFee = (sub.totals.stripeFee || 0) + (sale.stripeFee || 0) * ratio;
+          sub.totals.stripeFee =
+            (sub.totals.stripeFee || 0) + (sale.stripeFee || 0) * ratio;
           sub.totals.sales += ratio;
           sub.totals.orders += ratio;
           sub.totals.photos += sale.photos * ratio;
@@ -7745,10 +13168,14 @@ function EventsDashboard({
 
           unclassified.totals.revenue += sale.total * ratio;
           unclassified.totals.grossRevenue += sale.grossTotal * ratio;
-          unclassified.totals.subtotal += (sale.grossTotal + sale.discount) * ratio;
+          unclassified.totals.subtotal +=
+            (sale.grossTotal + sale.discount) * ratio;
           unclassified.totals.discounts += sale.discount * ratio;
-          unclassified.totals.fees += (sale.fees - (sale.stripeFee || 0)) * ratio;
-          unclassified.totals.stripeFee = (unclassified.totals.stripeFee || 0) + (sale.stripeFee || 0) * ratio;
+          unclassified.totals.fees +=
+            (sale.fees - (sale.stripeFee || 0)) * ratio;
+          unclassified.totals.stripeFee =
+            (unclassified.totals.stripeFee || 0) +
+            (sale.stripeFee || 0) * ratio;
           unclassified.totals.sales += ratio;
           unclassified.totals.orders += ratio;
           unclassified.totals.photos += sale.photos * ratio;
@@ -7774,7 +13201,8 @@ function EventsDashboard({
           sub.totals.subtotal += sale.grossTotal + sale.discount;
           sub.totals.discounts += sale.discount;
           sub.totals.fees += sale.fees - (sale.stripeFee || 0);
-          sub.totals.stripeFee = (sub.totals.stripeFee || 0) + (sale.stripeFee || 0);
+          sub.totals.stripeFee =
+            (sub.totals.stripeFee || 0) + (sale.stripeFee || 0);
           sub.totals.sales += 1;
           sub.totals.orders += 1;
           sub.totals.photos += sale.photos;
@@ -7791,7 +13219,8 @@ function EventsDashboard({
           unclassified.totals.subtotal += sale.grossTotal + sale.discount;
           unclassified.totals.discounts += sale.discount;
           unclassified.totals.fees += sale.fees - (sale.stripeFee || 0);
-          unclassified.totals.stripeFee = (unclassified.totals.stripeFee || 0) + (sale.stripeFee || 0);
+          unclassified.totals.stripeFee =
+            (unclassified.totals.stripeFee || 0) + (sale.stripeFee || 0);
           unclassified.totals.sales += 1;
           unclassified.totals.orders += 1;
           unclassified.totals.photos += sale.photos;
@@ -7805,7 +13234,7 @@ function EventsDashboard({
     // Calculate total published photos for selected albums to get conversion rate
     let totalPublishedPhotos = 0;
     let totalViews = 0;
-    selectedEvent.albumIds.forEach(id => {
+    selectedEvent.albumIds.forEach((id) => {
       const alb = albumMap[id];
       if (alb) {
         totalPublishedPhotos += alb.photos;
@@ -7813,20 +13242,30 @@ function EventsDashboard({
       }
     });
 
-    Object.keys(subEventMap).forEach(date => {
+    Object.keys(subEventMap).forEach((date) => {
       const sub = subEventMap[date];
-      sub.totals.avgOrder = sub.totals.sales > 0 ? sub.totals.grossRevenue / sub.totals.sales : 0;
+      sub.totals.avgOrder =
+        sub.totals.sales > 0 ? sub.totals.grossRevenue / sub.totals.sales : 0;
       sub.totals.albums = subEventAlbumsMap[date].size;
       sub.totals.publishedPhotos = totalPublishedPhotos;
-      sub.totals.conversion = totalPublishedPhotos ? (sub.totals.photos / totalPublishedPhotos) * 100 : 0;
+      sub.totals.conversion = totalPublishedPhotos
+        ? (sub.totals.photos / totalPublishedPhotos) * 100
+        : 0;
     });
 
-    unclassified.totals.avgOrder = unclassified.totals.sales > 0 ? unclassified.totals.grossRevenue / unclassified.totals.sales : 0;
+    unclassified.totals.avgOrder =
+      unclassified.totals.sales > 0
+        ? unclassified.totals.grossRevenue / unclassified.totals.sales
+        : 0;
     unclassified.totals.albums = unclassifiedAlbums.size;
     unclassified.totals.publishedPhotos = totalPublishedPhotos;
-    unclassified.totals.conversion = totalPublishedPhotos ? (unclassified.totals.photos / totalPublishedPhotos) * 100 : 0;
+    unclassified.totals.conversion = totalPublishedPhotos
+      ? (unclassified.totals.photos / totalPublishedPhotos) * 100
+      : 0;
 
-    const subEventsList = Object.values(subEventMap).sort((a, b) => a.date.localeCompare(b.date));
+    const subEventsList = Object.values(subEventMap).sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
 
     const eventTotals = {
       revenue: totalRevenue,
@@ -7841,7 +13280,9 @@ function EventsDashboard({
       publishedPhotos: totalPublishedPhotos,
       photos: totalPhotosSold,
       avgOrder: totalSalesCount ? totalGrossRevenue / totalSalesCount : 0,
-      conversion: totalPublishedPhotos ? (totalPhotosSold / totalPublishedPhotos) * 100 : 0
+      conversion: totalPublishedPhotos
+        ? (totalPhotosSold / totalPublishedPhotos) * 100
+        : 0,
     };
 
     return {
@@ -7849,7 +13290,7 @@ function EventsDashboard({
       subEvents: subEventsList,
       unclassified,
       salesList,
-      views: totalViews
+      views: totalViews,
     };
   }, [selectedEvent, allProfiles, albumMap, language]);
 
@@ -7862,7 +13303,9 @@ function EventsDashboard({
     if (selectedSubEventFilter === "unclassified") {
       return eventDetails.unclassified.totals;
     }
-    const sub = eventDetails.subEvents.find(s => s.id === selectedSubEventFilter);
+    const sub = eventDetails.subEvents.find(
+      (s) => s.id === selectedSubEventFilter,
+    );
     return sub ? sub.totals : eventDetails.totals;
   }, [eventDetails, selectedSubEventFilter]);
 
@@ -7875,7 +13318,7 @@ function EventsDashboard({
     }
   };
 
-  const currentViewEvent = customEvents.find(e => e.id === selectedEventId);
+  const currentViewEvent = customEvents.find((e) => e.id === selectedEventId);
 
   // Render Creation / Edition Form
   if (isCreating || isEditing) {
@@ -7883,12 +13326,35 @@ function EventsDashboard({
       <section className="panel" style={{ padding: "24px" }}>
         <header className="panel-header" style={{ marginBottom: "24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button className="icon-button" onClick={handleBackToList} style={{ background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button
+              className="icon-button"
+              onClick={handleBackToList}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h2>{isCreating ? (language === "es" ? "Crear Grupo de Evento" : "Create Event Group") : (language === "es" ? "Editar Grupo de Evento" : "Edit Event Group")}</h2>
-              <p>{language === "es" ? "Agrupa álbumes existentes de Lumepic y define sub-eventos por fecha." : "Group existing Lumepic albums and define sub-events by date."}</p>
+              <h2>
+                {isCreating
+                  ? language === "es"
+                    ? "Crear Grupo de Evento"
+                    : "Create Event Group"
+                  : language === "es"
+                    ? "Editar Grupo de Evento"
+                    : "Edit Event Group"}
+              </h2>
+              <p>
+                {language === "es"
+                  ? "Agrupa álbumes existentes de Lumepic y define sub-eventos por fecha."
+                  : "Group existing Lumepic albums and define sub-events by date."}
+              </p>
             </div>
           </div>
         </header>
@@ -7896,42 +13362,96 @@ function EventsDashboard({
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* Name */}
           <div>
-            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "700", marginBottom: "8px", color: "var(--ink)" }}>
-              {language === "es" ? "Nombre del Evento Consolidador" : "Consolidated Event Name"}
+            <label
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                fontWeight: "700",
+                marginBottom: "8px",
+                color: "var(--ink)",
+              }}
+            >
+              {language === "es"
+                ? "Nombre del Evento Consolidador"
+                : "Consolidated Event Name"}
             </label>
             <input
               type="text"
               className="text-input"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              placeholder={language === "es" ? "ej. Rock 'n' Roll San Diego Marathon" : "e.g. Rock 'n' Roll San Diego Marathon"}
-              style={{ width: "100%", height: "40px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)" }}
+              placeholder={
+                language === "es"
+                  ? "ej. Rock 'n' Roll San Diego Marathon"
+                  : "e.g. Rock 'n' Roll San Diego Marathon"
+              }
+              style={{
+                width: "100%",
+                height: "40px",
+                padding: "0 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--line)",
+              }}
             />
           </div>
 
           {/* Albums Checkbox list */}
           <div>
-            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "700", marginBottom: "8px", color: "var(--ink)" }}>
-              {language === "es" ? "Seleccionar Álbumes de Lumepic" : "Select Lumepic Albums"}
+            <label
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                fontWeight: "700",
+                marginBottom: "8px",
+                color: "var(--ink)",
+              }}
+            >
+              {language === "es"
+                ? "Seleccionar Álbumes de Lumepic"
+                : "Select Lumepic Albums"}
             </label>
-            <p style={{ fontSize: "0.75rem", color: "var(--muted)", margin: "-4px 0 12px 0" }}>
-              {language === "es" ? "Marca los álbumes cuyos datos se consolidarán en este evento." : "Check the albums whose statistics will consolidate into this event."}
+            <p
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--muted)",
+                margin: "-4px 0 12px 0",
+              }}
+            >
+              {language === "es"
+                ? "Marca los álbumes cuyos datos se consolidarán en este evento."
+                : "Check the albums whose statistics will consolidate into this event."}
             </p>
-            <div style={{
-              maxHeight: "220px",
-              overflowY: "auto",
-              border: "1px solid var(--line)",
-              borderRadius: "10px",
-              padding: "12px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              background: "var(--paper-2)"
-            }}>
+            <div
+              style={{
+                maxHeight: "220px",
+                overflowY: "auto",
+                border: "1px solid var(--line)",
+                borderRadius: "10px",
+                padding: "12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                background: "var(--paper-2)",
+              }}
+            >
               {Object.values(albumMap).map((album) => {
                 const checked = formAlbumIds.includes(album.id);
                 return (
-                  <label key={album.id} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.82rem", cursor: "pointer", padding: "6px 8px", borderRadius: "6px", background: checked ? "rgba(99, 102, 241, 0.05)" : "transparent" }}>
+                  <label
+                    key={album.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                      padding: "6px 8px",
+                      borderRadius: "6px",
+                      background: checked
+                        ? "rgba(99, 102, 241, 0.05)"
+                        : "transparent",
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
@@ -7939,8 +13459,16 @@ function EventsDashboard({
                       style={{ cursor: "pointer" }}
                     />
                     <div>
-                      <strong style={{ color: "var(--ink)" }}>{album.title}</strong>
-                      <span style={{ fontSize: "0.7rem", color: "var(--muted)", marginLeft: "8px" }}>
+                      <strong style={{ color: "var(--ink)" }}>
+                        {album.title}
+                      </strong>
+                      <span
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "var(--muted)",
+                          marginLeft: "8px",
+                        }}
+                      >
                         ({album.profileLabel})
                       </span>
                     </div>
@@ -7948,8 +13476,17 @@ function EventsDashboard({
                 );
               })}
               {Object.keys(albumMap).length === 0 && (
-                <p style={{ textAlign: "center", color: "var(--muted)", fontSize: "0.8rem", padding: "20px 0" }}>
-                  {language === "es" ? "No se encontraron álbumes cargados." : "No loaded albums found."}
+                <p
+                  style={{
+                    textAlign: "center",
+                    color: "var(--muted)",
+                    fontSize: "0.8rem",
+                    padding: "20px 0",
+                  }}
+                >
+                  {language === "es"
+                    ? "No se encontraron álbumes cargados."
+                    : "No loaded albums found."}
                 </p>
               )}
             </div>
@@ -7957,85 +13494,171 @@ function EventsDashboard({
 
           {/* Sub-events Definition */}
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <label style={{ fontSize: "0.85rem", fontWeight: "700", color: "var(--ink)", margin: 0 }}>
-                {language === "es" ? "Definir Sub-eventos por Fecha" : "Define Sub-events by Date"}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "8px",
+              }}
+            >
+              <label
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: "700",
+                  color: "var(--ink)",
+                  margin: 0,
+                }}
+              >
+                {language === "es"
+                  ? "Definir Sub-eventos por Fecha"
+                  : "Define Sub-events by Date"}
               </label>
               <button
                 type="button"
                 className="text-button"
                 onClick={handleAddSubEvent}
-                style={{ height: "28px", padding: "0 10px", fontSize: "0.72rem", background: "var(--paper-2)", border: "1px solid var(--line)" }}
+                style={{
+                  height: "28px",
+                  padding: "0 10px",
+                  fontSize: "0.72rem",
+                  background: "var(--paper-2)",
+                  border: "1px solid var(--line)",
+                }}
               >
                 <Plus size={12} style={{ marginRight: 4 }} />
                 {language === "es" ? "Añadir Sub-evento" : "Add Sub-event"}
               </button>
             </div>
-            <p style={{ fontSize: "0.75rem", color: "var(--muted)", margin: "-4px 0 12px 0" }}>
-              {language === "es" 
-                ? "Asigna un nombre (ej. Sábado 5K) a cada fecha del evento para separar las estadísticas de las fotos vendidas." 
+            <p
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--muted)",
+                margin: "-4px 0 12px 0",
+              }}
+            >
+              {language === "es"
+                ? "Asigna un nombre (ej. Sábado 5K) a cada fecha del evento para separar las estadísticas de las fotos vendidas."
                 : "Assign a name (e.g. Saturday 5K) to each event date to split statistics of sold photos."}
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+            >
               {formSubEvents.map((sub, idx) => (
-                <div key={sub.id} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                <div
+                  key={sub.id}
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <input
                     type="text"
                     className="text-input"
                     value={sub.name}
-                    onChange={(e) => handleUpdateSubEvent(idx, "name", e.target.value)}
-                    placeholder={language === "es" ? "ej. Sábado 5K" : "e.g. Saturday 5K"}
-                    style={{ flex: 2, minWidth: "120px", height: "36px", padding: "0 10px", borderRadius: "6px", border: "1px solid var(--line)" }}
+                    onChange={(e) =>
+                      handleUpdateSubEvent(idx, "name", e.target.value)
+                    }
+                    placeholder={
+                      language === "es" ? "ej. Sábado 5K" : "e.g. Saturday 5K"
+                    }
+                    style={{
+                      flex: 2,
+                      minWidth: "120px",
+                      height: "36px",
+                      padding: "0 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--line)",
+                    }}
                   />
                   <input
                     type="date"
                     className="text-input"
                     value={sub.date}
-                    onChange={(e) => handleUpdateSubEvent(idx, "date", e.target.value)}
-                    style={{ flex: 1, minWidth: "110px", height: "36px", padding: "0 10px", borderRadius: "6px", border: "1px solid var(--line)" }}
-                  />
-                  
-                  {/* Subevent Local Folder Picker inside Creation/Edit Form */}
-                  {sub.localDirName ? (
-                    <div style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      background: "var(--paper-2)",
-                      padding: "0 8px",
+                    onChange={(e) =>
+                      handleUpdateSubEvent(idx, "date", e.target.value)
+                    }
+                    style={{
+                      flex: 1,
+                      minWidth: "110px",
+                      height: "36px",
+                      padding: "0 10px",
                       borderRadius: "6px",
                       border: "1px solid var(--line)",
-                      height: "36px",
-                      maxWidth: "180px",
-                      fontSize: "0.75rem"
-                    }}>
-                      <span style={{
-                        maxWidth: "80px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontWeight: "600",
-                        color: "var(--ink)",
+                    }}
+                  />
+
+                  {/* Subevent Local Folder Picker inside Creation/Edit Form */}
+                  {sub.localDirName ? (
+                    <div
+                      style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: "4px"
-                      }} title={sub.localDirName}>
-                        <FolderOpen size={12} style={{ color: "var(--accent, #6366f1)" }} />
+                        gap: "6px",
+                        background: "var(--paper-2)",
+                        padding: "0 8px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--line)",
+                        height: "36px",
+                        maxWidth: "180px",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      <span
+                        style={{
+                          maxWidth: "80px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontWeight: "600",
+                          color: "var(--ink)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                        title={sub.localDirName}
+                      >
+                        <FolderOpen
+                          size={12}
+                          style={{ color: "var(--accent, #6366f1)" }}
+                        />
                         {sub.localDirName}
                       </span>
                       <button
                         type="button"
-                        onClick={() => handleLinkSubEventFolderInForm(idx, sub.id)}
-                        style={{ border: "none", background: "none", cursor: "pointer", color: "var(--accent, #6366f1)", padding: 0, fontSize: "0.7rem", textDecoration: "underline" }}
+                        onClick={() =>
+                          handleLinkSubEventFolderInForm(idx, sub.id)
+                        }
+                        style={{
+                          border: "none",
+                          background: "none",
+                          cursor: "pointer",
+                          color: "var(--accent, #6366f1)",
+                          padding: 0,
+                          fontSize: "0.7rem",
+                          textDecoration: "underline",
+                        }}
                       >
                         {language === "es" ? "Cambiar" : "Change"}
                       </button>
                       <span style={{ color: "var(--line)" }}>|</span>
                       <button
                         type="button"
-                        onClick={() => handleUnlinkSubEventFolderInForm(idx, sub.id)}
-                        style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 0, fontSize: "0.7rem", textDecoration: "underline" }}
+                        onClick={() =>
+                          handleUnlinkSubEventFolderInForm(idx, sub.id)
+                        }
+                        style={{
+                          border: "none",
+                          background: "none",
+                          cursor: "pointer",
+                          color: "#ef4444",
+                          padding: 0,
+                          fontSize: "0.7rem",
+                          textDecoration: "underline",
+                        }}
                       >
                         {language === "es" ? "Quitar" : "Remove"}
                       </button>
@@ -8043,7 +13666,9 @@ function EventsDashboard({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleLinkSubEventFolderInForm(idx, sub.id)}
+                      onClick={() =>
+                        handleLinkSubEventFolderInForm(idx, sub.id)
+                      }
                       className="text-button"
                       style={{
                         height: "36px",
@@ -8055,7 +13680,7 @@ function EventsDashboard({
                         color: "var(--ink)",
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: "4px"
+                        gap: "4px",
                       }}
                     >
                       <FolderOpen size={13} />
@@ -8067,27 +13692,60 @@ function EventsDashboard({
                     type="button"
                     className="icon-button"
                     onClick={() => handleRemoveSubEvent(idx)}
-                    style={{ background: "transparent", border: "none", cursor: "pointer", padding: "8px", color: "var(--red, #ef4444)" }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "8px",
+                      color: "var(--red, #ef4444)",
+                    }}
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
               ))}
               {formSubEvents.length === 0 && (
-                <div style={{ textAlign: "center", padding: "20px", background: "var(--paper)", border: "1px dashed var(--line)", borderRadius: "8px", color: "var(--muted)", fontSize: "0.78rem" }}>
-                  {language === "es" ? "Ningún sub-evento configurado aún. Agrégalos para subdividir ingresos." : "No sub-events configured yet. Add them to subdivide revenue."}
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "20px",
+                    background: "var(--paper)",
+                    border: "1px dashed var(--line)",
+                    borderRadius: "8px",
+                    color: "var(--muted)",
+                    fontSize: "0.78rem",
+                  }}
+                >
+                  {language === "es"
+                    ? "Ningún sub-evento configurado aún. Agrégalos para subdividir ingresos."
+                    : "No sub-events configured yet. Add them to subdivide revenue."}
                 </div>
               )}
             </div>
           </div>
 
           {/* Form Actions */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", borderTop: "1px solid var(--line)", paddingTop: "20px", marginTop: "10px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "12px",
+              borderTop: "1px solid var(--line)",
+              paddingTop: "20px",
+              marginTop: "10px",
+            }}
+          >
             <button
               type="button"
               className="text-button"
               onClick={handleBackToList}
-              style={{ height: "38px", padding: "0 16px", background: "transparent", border: "1px solid var(--line)", color: "var(--ink)" }}
+              style={{
+                height: "38px",
+                padding: "0 16px",
+                background: "transparent",
+                border: "1px solid var(--line)",
+                color: "var(--ink)",
+              }}
             >
               {language === "es" ? "Cancelar" : "Cancel"}
             </button>
@@ -8095,7 +13753,12 @@ function EventsDashboard({
               type="button"
               className="text-button"
               onClick={handleSave}
-              style={{ height: "38px", padding: "0 18px", background: "var(--accent, #6366f1)", color: "var(--white)" }}
+              style={{
+                height: "38px",
+                padding: "0 18px",
+                background: "var(--accent, #6366f1)",
+                color: "var(--white)",
+              }}
             >
               <Check size={16} style={{ marginRight: 6 }} />
               {language === "es" ? "Guardar Evento" : "Save Event"}
@@ -8109,23 +13772,63 @@ function EventsDashboard({
   // Render Empty State (No custom events created yet)
   if (sortedCustomEvents.length === 0) {
     return (
-      <section className="panel" style={{ padding: "64px 20px", textAlign: "center", background: "var(--white)", border: "1px solid var(--line)", borderRadius: "16px" }}>
-        <Calendar size={48} style={{ color: "var(--accent, #6366f1)", marginBottom: "16px", opacity: 0.8 }} />
-        <h2 style={{ fontSize: "1.25rem", fontWeight: "800", marginBottom: "8px", color: "var(--ink)" }}>
-          {language === "es" ? "Agrupación de Eventos y Sub-eventos" : "Event Groupings & Sub-events"}
+      <section
+        className="panel"
+        style={{
+          padding: "64px 20px",
+          textAlign: "center",
+          background: "var(--white)",
+          border: "1px solid var(--line)",
+          borderRadius: "16px",
+        }}
+      >
+        <Calendar
+          size={48}
+          style={{
+            color: "var(--accent, #6366f1)",
+            marginBottom: "16px",
+            opacity: 0.8,
+          }}
+        />
+        <h2
+          style={{
+            fontSize: "1.25rem",
+            fontWeight: "800",
+            marginBottom: "8px",
+            color: "var(--ink)",
+          }}
+        >
+          {language === "es"
+            ? "Agrupación de Eventos y Sub-eventos"
+            : "Event Groupings & Sub-events"}
         </h2>
-        <p style={{ maxWidth: "460px", margin: "0 auto 24px auto", color: "var(--muted)", fontSize: "0.85rem", lineHeight: "1.5" }}>
-          {language === "es" 
-            ? "Agrupa múltiples álbumes de Lumepic para ver sus estadísticas consolidadas y luego sepáralos en sub-eventos específicos (ej. Carreras de Sábado 5K vs Domingo 21K) ingresando las fechas correspondientes." 
+        <p
+          style={{
+            maxWidth: "460px",
+            margin: "0 auto 24px auto",
+            color: "var(--muted)",
+            fontSize: "0.85rem",
+            lineHeight: "1.5",
+          }}
+        >
+          {language === "es"
+            ? "Agrupa múltiples álbumes de Lumepic para ver sus estadísticas consolidadas y luego sepáralos en sub-eventos específicos (ej. Carreras de Sábado 5K vs Domingo 21K) ingresando las fechas correspondientes."
             : "Group multiple Lumepic albums to view consolidated statistics, then split them into specific sub-events (e.g. Saturday 5K vs Sunday 21K races) by defining their dates."}
         </p>
         <button
           className="text-button"
           onClick={handleStartCreate}
-          style={{ height: "40px", padding: "0 18px", background: "var(--accent, #6366f1)", color: "var(--white)" }}
+          style={{
+            height: "40px",
+            padding: "0 18px",
+            background: "var(--accent, #6366f1)",
+            color: "var(--white)",
+          }}
         >
           <Plus size={16} style={{ marginRight: 6 }} />
-          {language === "es" ? "Configurar Agrupación de Evento" : "Set Up Event Grouping"}
+          {language === "es"
+            ? "Configurar Agrupación de Evento"
+            : "Set Up Event Grouping"}
         </button>
       </section>
     );
@@ -8135,10 +13838,31 @@ function EventsDashboard({
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Event Selector Header */}
       <section className="panel" style={{ padding: "16px 20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              flexWrap: "wrap",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--muted)" }}>
+              <span
+                style={{
+                  fontSize: "0.8rem",
+                  fontWeight: "700",
+                  color: "var(--muted)",
+                }}
+              >
                 {language === "es" ? "EVENTO:" : "EVENT:"}
               </span>
               <select
@@ -8156,7 +13880,7 @@ function EventsDashboard({
                   color: "var(--ink)",
                   fontWeight: "700",
                   fontSize: "0.88rem",
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
                 {sortedCustomEvents.map((evt) => (
@@ -8167,42 +13891,56 @@ function EventsDashboard({
               </select>
             </div>
 
-            {selectedEvent && selectedEvent.subEvents && selectedEvent.subEvents.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--muted)" }}>
-                  {language === "es" ? "STATS DE:" : "STATS FOR:"}
-                </span>
-                <select
-                  value={selectedSubEventFilter}
-                  onChange={(e) => setSelectedSubEventFilter(e.target.value)}
-                  style={{
-                    height: "36px",
-                    padding: "0 12px 0 8px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--line)",
-                    background: "var(--paper-2)",
-                    color: "var(--ink)",
-                    fontWeight: "700",
-                    fontSize: "0.88rem",
-                    cursor: "pointer"
-                  }}
+            {selectedEvent &&
+              selectedEvent.subEvents &&
+              selectedEvent.subEvents.length > 0 && (
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
                 >
-                  <option value="all">
-                    {language === "es" ? "Todo el Evento (Consolidado)" : "Entire Event (Consolidated)"}
-                  </option>
-                  {eventDetails?.subEvents.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name} ({formatDateOnly(sub.date, language)})
+                  <span
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: "700",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    {language === "es" ? "STATS DE:" : "STATS FOR:"}
+                  </span>
+                  <select
+                    value={selectedSubEventFilter}
+                    onChange={(e) => setSelectedSubEventFilter(e.target.value)}
+                    style={{
+                      height: "36px",
+                      padding: "0 12px 0 8px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--line)",
+                      background: "var(--paper-2)",
+                      color: "var(--ink)",
+                      fontWeight: "700",
+                      fontSize: "0.88rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="all">
+                      {language === "es"
+                        ? "Todo el Evento (Consolidado)"
+                        : "Entire Event (Consolidated)"}
                     </option>
-                  ))}
-                  {eventDetails && eventDetails.unclassified && eventDetails.unclassified.revenue > 0 && (
-                    <option value="unclassified">
-                      {eventDetails.unclassified.name}
-                    </option>
-                  )}
-                </select>
-              </div>
-            )}
+                    {eventDetails?.subEvents.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} ({formatDateOnly(sub.date, language)})
+                      </option>
+                    ))}
+                    {eventDetails &&
+                      eventDetails.unclassified &&
+                      eventDetails.unclassified.revenue > 0 && (
+                        <option value="unclassified">
+                          {eventDetails.unclassified.name}
+                        </option>
+                      )}
+                  </select>
+                </div>
+              )}
           </div>
 
           <div style={{ display: "flex", gap: "10px" }}>
@@ -8210,7 +13948,14 @@ function EventsDashboard({
               <button
                 className="text-button"
                 onClick={() => handleStartEdit(currentViewEvent)}
-                style={{ height: "34px", padding: "0 12px", background: "var(--paper-2)", border: "1px solid var(--line)", color: "var(--ink)", fontSize: "0.78rem" }}
+                style={{
+                  height: "34px",
+                  padding: "0 12px",
+                  background: "var(--paper-2)",
+                  border: "1px solid var(--line)",
+                  color: "var(--ink)",
+                  fontSize: "0.78rem",
+                }}
               >
                 <Edit3 size={13} style={{ marginRight: 6 }} />
                 {language === "es" ? "Editar Agrupación" : "Edit Grouping"}
@@ -8219,7 +13964,13 @@ function EventsDashboard({
             <button
               className="text-button"
               onClick={handleStartCreate}
-              style={{ height: "34px", padding: "0 12px", background: "var(--ink)", color: "var(--white)", fontSize: "0.78rem" }}
+              style={{
+                height: "34px",
+                padding: "0 12px",
+                background: "var(--ink)",
+                color: "var(--white)",
+                fontSize: "0.78rem",
+              }}
             >
               <Plus size={13} style={{ marginRight: 6 }} />
               {language === "es" ? "Nuevo Evento" : "New Event"}
@@ -8228,12 +13979,25 @@ function EventsDashboard({
               <button
                 className="icon-button"
                 onClick={() => {
-                  if (confirm(language === "es" ? "¿Seguro que deseas eliminar esta agrupación de evento?" : "Are you sure you want to delete this event grouping?")) {
+                  if (
+                    confirm(
+                      language === "es"
+                        ? "¿Seguro que deseas eliminar esta agrupación de evento?"
+                        : "Are you sure you want to delete this event grouping?",
+                    )
+                  ) {
                     onDeleteEvent(selectedEventId);
                     setSelectedEventId(null);
                   }
                 }}
-                style={{ background: "transparent", border: "1px solid var(--line)", cursor: "pointer", padding: "8px", borderRadius: "8px", color: "var(--red, #ef4444)" }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--line)",
+                  cursor: "pointer",
+                  padding: "8px",
+                  borderRadius: "8px",
+                  color: "var(--red, #ef4444)",
+                }}
                 title={language === "es" ? "Eliminar evento" : "Delete event"}
               >
                 <Trash2 size={15} />
@@ -8242,38 +14006,77 @@ function EventsDashboard({
           </div>
         </div>
         {currentViewEvent && (
-          <div style={{
-            marginTop: "16px",
-            paddingTop: "16px",
-            borderTop: "1px solid var(--line)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "12px",
-            fontSize: "0.82rem"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--muted)" }}>
-              <FolderSync size={15} style={{ color: "var(--accent, #6366f1)" }} />
-              <span>{language === "es" ? "Carpeta local vinculada:" : "Linked local folder:"}</span>
+          <div
+            style={{
+              marginTop: "16px",
+              paddingTop: "16px",
+              borderTop: "1px solid var(--line)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+              fontSize: "0.82rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                color: "var(--muted)",
+              }}
+            >
+              <FolderSync
+                size={15}
+                style={{ color: "var(--accent, #6366f1)" }}
+              />
+              <span>
+                {language === "es"
+                  ? "Carpeta local vinculada:"
+                  : "Linked local folder:"}
+              </span>
               {currentViewEvent.localDirName ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--ink)", fontWeight: "700" }}>
-                  <FolderOpen size={14} style={{ color: "var(--accent, #6366f1)" }} />
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    color: "var(--ink)",
+                    fontWeight: "700",
+                  }}
+                >
+                  <FolderOpen
+                    size={14}
+                    style={{ color: "var(--accent, #6366f1)" }}
+                  />
                   {currentViewEvent.localDirName}
                 </span>
               ) : (
                 <em style={{ color: "var(--muted)", fontWeight: "normal" }}>
-                  {language === "es" ? "Ninguna carpeta local vinculada" : "No local folder linked"}
+                  {language === "es"
+                    ? "Ninguna carpeta local vinculada"
+                    : "No local folder linked"}
                 </em>
               )}
             </div>
             <div>
               {currentViewEvent.localDirName ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
                   <button
                     onClick={() => onLinkEventFolder(currentViewEvent.id)}
                     className="text-link-btn"
-                    style={{ color: "var(--accent, #6366f1)", border: "none", background: "none", cursor: "pointer", fontWeight: "600", textDecoration: "underline", padding: 0 }}
+                    style={{
+                      color: "var(--accent, #6366f1)",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontWeight: "600",
+                      textDecoration: "underline",
+                      padding: 0,
+                    }}
                   >
                     {language === "es" ? "Cambiar Carpeta" : "Change Folder"}
                   </button>
@@ -8281,7 +14084,15 @@ function EventsDashboard({
                   <button
                     onClick={() => onUnlinkEventFolder(currentViewEvent.id)}
                     className="text-link-btn"
-                    style={{ color: "#ef4444", border: "none", background: "none", cursor: "pointer", fontWeight: "600", textDecoration: "underline", padding: 0 }}
+                    style={{
+                      color: "#ef4444",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontWeight: "600",
+                      textDecoration: "underline",
+                      padding: 0,
+                    }}
                   >
                     {language === "es" ? "Desvincular" : "Unlink"}
                   </button>
@@ -8302,7 +14113,7 @@ function EventsDashboard({
                     fontWeight: "600",
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: "6px"
+                    gap: "6px",
                   }}
                 >
                   <FolderOpen size={12} />
@@ -8317,20 +14128,41 @@ function EventsDashboard({
       {eventDetails && (
         <>
           {/* KPI Grid (Either consolidated or sub-event filtered) */}
-          <KpiGrid totals={displayedTotals || eventDetails.totals} language={language} />
+          <KpiGrid
+            totals={displayedTotals || eventDetails.totals}
+            language={language}
+          />
 
           {/* Sub-events Breakdown Section */}
           <section className="panel" style={{ padding: "20px" }}>
             <header className="panel-header" style={{ marginBottom: "20px" }}>
               <div>
-                <h2>{language === "es" ? "Desglose por Sub-eventos" : "Sub-events Breakdown"}</h2>
+                <h2>
+                  {language === "es"
+                    ? "Desglose por Sub-eventos"
+                    : "Sub-events Breakdown"}
+                </h2>
                 <p style={{ marginBottom: "6px" }}>
-                  {language === "es" 
-                    ? "Distribución financiera y volumen de ventas imputado a cada sub-evento según la fecha de las fotos." 
+                  {language === "es"
+                    ? "Distribución financiera y volumen de ventas imputado a cada sub-evento según la fecha de las fotos."
                     : "Financial distribution and sales volume mapped to each sub-event based on photo dates."}
                 </p>
-                <p style={{ fontSize: "0.78rem", color: "var(--muted)", display: "flex", alignItems: "center", gap: "6px", opacity: 0.85 }}>
-                  <span style={{ display: "inline-flex", flexShrink: 0 }}><Calendar size={13} style={{ color: "var(--accent, #6366f1)" }} /></span>
+                <p
+                  style={{
+                    fontSize: "0.78rem",
+                    color: "var(--muted)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    opacity: 0.85,
+                  }}
+                >
+                  <span style={{ display: "inline-flex", flexShrink: 0 }}>
+                    <Calendar
+                      size={13}
+                      style={{ color: "var(--accent, #6366f1)" }}
+                    />
+                  </span>
                   {language === "es"
                     ? "Puedes vincular una carpeta general para todo el evento (arriba), o carpetas individuales para cada sub-evento (abajo). Si no vinculas una carpeta de sub-evento, se usará la carpeta del evento general como respaldo."
                     : "You can link a general folder for the entire event (above), or individual folders for each sub-event (below). If a sub-event has no folder linked, the general event folder will be used as a fallback."}
@@ -8340,40 +14172,149 @@ function EventsDashboard({
             </header>
 
             {/* Visual Progress Bar Chart */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "16px", background: "var(--paper-2)", borderRadius: "12px", border: "1px solid var(--line)", marginBottom: "24px" }}>
-              <span style={{ fontSize: "0.78rem", fontWeight: "700", color: "var(--muted)", textTransform: "uppercase" }}>
-                {language === "es" ? "Participación en los Ingresos Netos" : "Net Revenue Share Breakdown"}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+                padding: "16px",
+                background: "var(--paper-2)",
+                borderRadius: "12px",
+                border: "1px solid var(--line)",
+                marginBottom: "24px",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.78rem",
+                  fontWeight: "700",
+                  color: "var(--muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                {language === "es"
+                  ? "Participación en los Ingresos Netos"
+                  : "Net Revenue Share Breakdown"}
               </span>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
                 {eventDetails.subEvents.map((sub) => {
-                  const pct = eventDetails.totals.revenue > 0 ? (sub.revenue / eventDetails.totals.revenue) * 100 : 0;
+                  const pct =
+                    eventDetails.totals.revenue > 0
+                      ? (sub.revenue / eventDetails.totals.revenue) * 100
+                      : 0;
                   return (
-                    <div key={sub.date} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
-                        <span style={{ fontWeight: "700", color: "var(--ink)" }}>{sub.name} ({formatDateOnly(sub.date, language)})</span>
-                        <span style={{ fontWeight: "800", color: "var(--ink)" }}>{money.format(sub.revenue)} ({pct.toFixed(1)}%)</span>
+                    <div
+                      key={sub.date}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "4px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "0.78rem",
+                        }}
+                      >
+                        <span
+                          style={{ fontWeight: "700", color: "var(--ink)" }}
+                        >
+                          {sub.name} ({formatDateOnly(sub.date, language)})
+                        </span>
+                        <span
+                          style={{ fontWeight: "800", color: "var(--ink)" }}
+                        >
+                          {money.format(sub.revenue)} ({pct.toFixed(1)}%)
+                        </span>
                       </div>
-                      <div style={{ width: "100%", height: "8px", background: "var(--line-soft)", borderRadius: "4px", overflow: "hidden" }}>
-                        <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #6366f1, #a855f7)", borderRadius: "4px" }} />
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "8px",
+                          background: "var(--line-soft)",
+                          borderRadius: "4px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${pct}%`,
+                            height: "100%",
+                            background:
+                              "linear-gradient(90deg, #6366f1, #a855f7)",
+                            borderRadius: "4px",
+                          }}
+                        />
                       </div>
                     </div>
                   );
                 })}
                 {/* Unclassified bar */}
-                {eventDetails.unclassified.revenue > 0 && (() => {
-                  const pct = eventDetails.totals.revenue > 0 ? (eventDetails.unclassified.revenue / eventDetails.totals.revenue) * 100 : 0;
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
-                        <span style={{ fontWeight: "700", color: "var(--muted)" }}>{eventDetails.unclassified.name}</span>
-                        <span style={{ fontWeight: "800", color: "var(--muted)" }}>{money.format(eventDetails.unclassified.revenue)} ({pct.toFixed(1)}%)</span>
+                {eventDetails.unclassified.revenue > 0 &&
+                  (() => {
+                    const pct =
+                      eventDetails.totals.revenue > 0
+                        ? (eventDetails.unclassified.revenue /
+                            eventDetails.totals.revenue) *
+                          100
+                        : 0;
+                    return (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontSize: "0.78rem",
+                          }}
+                        >
+                          <span
+                            style={{ fontWeight: "700", color: "var(--muted)" }}
+                          >
+                            {eventDetails.unclassified.name}
+                          </span>
+                          <span
+                            style={{ fontWeight: "800", color: "var(--muted)" }}
+                          >
+                            {money.format(eventDetails.unclassified.revenue)} (
+                            {pct.toFixed(1)}%)
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "8px",
+                            background: "var(--line-soft)",
+                            borderRadius: "4px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              background: "var(--muted)",
+                              borderRadius: "4px",
+                              opacity: 0.5,
+                            }}
+                          />
+                        </div>
                       </div>
-                      <div style={{ width: "100%", height: "8px", background: "var(--line-soft)", borderRadius: "4px", overflow: "hidden" }}>
-                        <div style={{ width: `${pct}%`, height: "100%", background: "var(--muted)", borderRadius: "4px", opacity: 0.5 }} />
-                      </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
               </div>
             </div>
 
@@ -8384,60 +14325,132 @@ function EventsDashboard({
                   <tr>
                     <th>{language === "es" ? "Sub-evento" : "Sub-event"}</th>
                     <th>{language === "es" ? "Fecha" : "Date"}</th>
-                    <th>{language === "es" ? "Ingresos Brutos" : "Gross Revenue"}</th>
-                    <th>{language === "es" ? "Ingresos Netos" : "Net Revenue"}</th>
+                    <th>
+                      {language === "es" ? "Ingresos Brutos" : "Gross Revenue"}
+                    </th>
+                    <th>
+                      {language === "es" ? "Ingresos Netos" : "Net Revenue"}
+                    </th>
                     <th>{language === "es" ? "Porcentaje" : "Percentage"}</th>
-                    <th>{language === "es" ? "Ventas Imputadas" : "Mapped Sales"}</th>
-                    <th>{language === "es" ? "Fotos Vendidas" : "Photos Sold"}</th>
-                    <th>{language === "es" ? "Carpeta Local" : "Local Folder"}</th>
+                    <th>
+                      {language === "es" ? "Ventas Imputadas" : "Mapped Sales"}
+                    </th>
+                    <th>
+                      {language === "es" ? "Fotos Vendidas" : "Photos Sold"}
+                    </th>
+                    <th>
+                      {language === "es" ? "Carpeta Local" : "Local Folder"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {eventDetails.subEvents.map((sub) => {
-                    const pct = eventDetails.totals.revenue > 0 ? (sub.revenue / eventDetails.totals.revenue) * 100 : 0;
+                    const pct =
+                      eventDetails.totals.revenue > 0
+                        ? (sub.revenue / eventDetails.totals.revenue) * 100
+                        : 0;
                     return (
                       <tr key={sub.date}>
-                        <td data-label="Sub-evento"><strong>{sub.name}</strong></td>
-                        <td data-label="Fecha">{formatDateOnly(sub.date, language)}</td>
-                        <td data-label={language === "es" ? "Ingresos Brutos" : "Gross Revenue"}>{money.format(sub.totals.grossRevenue)}</td>
-                        <td data-label="Ingresos Netos">{money.format(sub.revenue)}</td>
+                        <td data-label="Sub-evento">
+                          <strong>{sub.name}</strong>
+                        </td>
+                        <td data-label="Fecha">
+                          {formatDateOnly(sub.date, language)}
+                        </td>
+                        <td
+                          data-label={
+                            language === "es"
+                              ? "Ingresos Brutos"
+                              : "Gross Revenue"
+                          }
+                        >
+                          {money.format(sub.totals.grossRevenue)}
+                        </td>
+                        <td data-label="Ingresos Netos">
+                          {money.format(sub.revenue)}
+                        </td>
                         <td data-label="Porcentaje">{pct.toFixed(1)}%</td>
-                        <td data-label="Ventas Imputadas">{sub.salesCount.toFixed(1)}</td>
-                        <td data-label="Fotos Vendidas">{Math.round(sub.photosSold)}</td>
-                        <td data-label={language === "es" ? "Carpeta Local" : "Local Folder"}>
+                        <td data-label="Ventas Imputadas">
+                          {sub.salesCount.toFixed(1)}
+                        </td>
+                        <td data-label="Fotos Vendidas">
+                          {Math.round(sub.photosSold)}
+                        </td>
+                        <td
+                          data-label={
+                            language === "es" ? "Carpeta Local" : "Local Folder"
+                          }
+                        >
                           {sub.localDirName ? (
-                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                              <span style={{
-                                maxWidth: "120px",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                fontWeight: "600",
-                                color: "var(--ink)",
+                            <div
+                              style={{
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: "4px"
-                              }} title={sub.localDirName}>
-                                <FolderOpen size={12} style={{ color: "var(--accent, #6366f1)" }} />
+                                gap: "6px",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  maxWidth: "120px",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  fontWeight: "600",
+                                  color: "var(--ink)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                                title={sub.localDirName}
+                              >
+                                <FolderOpen
+                                  size={12}
+                                  style={{ color: "var(--accent, #6366f1)" }}
+                                />
                                 {sub.localDirName}
                               </span>
                               <button
-                                onClick={() => onLinkSubEventFolder(selectedEventId!, sub.id)}
-                                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--accent, #6366f1)", padding: 0, fontSize: "0.72rem", textDecoration: "underline" }}
+                                onClick={() =>
+                                  onLinkSubEventFolder(selectedEventId!, sub.id)
+                                }
+                                style={{
+                                  border: "none",
+                                  background: "none",
+                                  cursor: "pointer",
+                                  color: "var(--accent, #6366f1)",
+                                  padding: 0,
+                                  fontSize: "0.72rem",
+                                  textDecoration: "underline",
+                                }}
                               >
                                 {language === "es" ? "Cambiar" : "Change"}
                               </button>
                               <span style={{ color: "var(--line)" }}>|</span>
                               <button
-                                onClick={() => onUnlinkSubEventFolder(selectedEventId!, sub.id)}
-                                style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 0, fontSize: "0.72rem", textDecoration: "underline" }}
+                                onClick={() =>
+                                  onUnlinkSubEventFolder(
+                                    selectedEventId!,
+                                    sub.id,
+                                  )
+                                }
+                                style={{
+                                  border: "none",
+                                  background: "none",
+                                  cursor: "pointer",
+                                  color: "#ef4444",
+                                  padding: 0,
+                                  fontSize: "0.72rem",
+                                  textDecoration: "underline",
+                                }}
                               >
                                 {language === "es" ? "Quitar" : "Remove"}
                               </button>
                             </div>
                           ) : (
                             <button
-                              onClick={() => onLinkSubEventFolder(selectedEventId!, sub.id)}
+                              onClick={() =>
+                                onLinkSubEventFolder(selectedEventId!, sub.id)
+                              }
                               className="text-button"
                               style={{
                                 height: "24px",
@@ -8450,7 +14463,7 @@ function EventsDashboard({
                                 cursor: "pointer",
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: "4px"
+                                gap: "4px",
                               }}
                             >
                               <FolderOpen size={10} />
@@ -8464,23 +14477,65 @@ function EventsDashboard({
                   {/* Unclassified Row */}
                   {eventDetails.unclassified.revenue > 0 && (
                     <tr style={{ background: "rgba(0, 0, 0, 0.02)" }}>
-                      <td data-label="Sub-evento"><em>{eventDetails.unclassified.name}</em></td>
+                      <td data-label="Sub-evento">
+                        <em>{eventDetails.unclassified.name}</em>
+                      </td>
                       <td data-label="Fecha">-</td>
-                      <td data-label={language === "es" ? "Ingresos Brutos" : "Gross Revenue"}>{money.format(eventDetails.unclassified.totals.grossRevenue)}</td>
-                      <td data-label="Ingresos Netos">{money.format(eventDetails.unclassified.revenue)}</td>
-                      <td data-label="Porcentaje">{(eventDetails.totals.revenue > 0 ? (eventDetails.unclassified.revenue / eventDetails.totals.revenue) * 100 : 0).toFixed(1)}%</td>
-                      <td data-label="Ventas Imputadas">{eventDetails.unclassified.salesCount.toFixed(1)}</td>
-                      <td data-label="Fotos Vendidas">{Math.round(eventDetails.unclassified.photosSold)}</td>
-                      <td data-label={language === "es" ? "Carpeta Local" : "Local Folder"}>-</td>
-                    </tr>
-                  )}
-                  {eventDetails.subEvents.length === 0 && eventDetails.unclassified.revenue === 0 && (
-                    <tr>
-                      <td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: "20px" }}>
-                        {language === "es" ? "Ninguna venta registrada para los álbumes seleccionados." : "No sales recorded for the selected albums."}
+                      <td
+                        data-label={
+                          language === "es"
+                            ? "Ingresos Brutos"
+                            : "Gross Revenue"
+                        }
+                      >
+                        {money.format(
+                          eventDetails.unclassified.totals.grossRevenue,
+                        )}
+                      </td>
+                      <td data-label="Ingresos Netos">
+                        {money.format(eventDetails.unclassified.revenue)}
+                      </td>
+                      <td data-label="Porcentaje">
+                        {(eventDetails.totals.revenue > 0
+                          ? (eventDetails.unclassified.revenue /
+                              eventDetails.totals.revenue) *
+                            100
+                          : 0
+                        ).toFixed(1)}
+                        %
+                      </td>
+                      <td data-label="Ventas Imputadas">
+                        {eventDetails.unclassified.salesCount.toFixed(1)}
+                      </td>
+                      <td data-label="Fotos Vendidas">
+                        {Math.round(eventDetails.unclassified.photosSold)}
+                      </td>
+                      <td
+                        data-label={
+                          language === "es" ? "Carpeta Local" : "Local Folder"
+                        }
+                      >
+                        -
                       </td>
                     </tr>
                   )}
+                  {eventDetails.subEvents.length === 0 &&
+                    eventDetails.unclassified.revenue === 0 && (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          style={{
+                            textAlign: "center",
+                            color: "var(--muted)",
+                            padding: "20px",
+                          }}
+                        >
+                          {language === "es"
+                            ? "Ninguna venta registrada para los álbumes seleccionados."
+                            : "No sales recorded for the selected albums."}
+                        </td>
+                      </tr>
+                    )}
                 </tbody>
               </table>
             </div>
@@ -8490,8 +14545,16 @@ function EventsDashboard({
           <section className="panel" style={{ padding: "20px" }}>
             <header className="panel-header" style={{ marginBottom: "16px" }}>
               <div>
-                <h2>{language === "es" ? "Álbumes Conectados en este Evento" : "Connected Albums in this Event"}</h2>
-                <p>{language === "es" ? "Listado de álbumes de Lumepic que alimentan los datos del evento." : "List of Lumepic albums feeding statistics into this event."}</p>
+                <h2>
+                  {language === "es"
+                    ? "Álbumes Conectados en este Evento"
+                    : "Connected Albums in this Event"}
+                </h2>
+                <p>
+                  {language === "es"
+                    ? "Listado de álbumes de Lumepic que alimentan los datos del evento."
+                    : "List of Lumepic albums feeding statistics into this event."}
+                </p>
               </div>
               <Album size={21} />
             </header>
@@ -8502,22 +14565,38 @@ function EventsDashboard({
                     <th>{language === "es" ? "Álbum" : "Album"}</th>
                     <th>{language === "es" ? "Perfil" : "Profile"}</th>
                     <th>{language === "es" ? "Visitas" : "Views"}</th>
-                    <th>{language === "es" ? "Ingresos Totales" : "Total Revenue"}</th>
-                    <th>{language === "es" ? "Fotos Publicadas" : "Uploaded Photos"}</th>
-                    <th>{language === "es" ? "Fotos Vendidas" : "Sold Photos"}</th>
+                    <th>
+                      {language === "es" ? "Ingresos Totales" : "Total Revenue"}
+                    </th>
+                    <th>
+                      {language === "es"
+                        ? "Fotos Publicadas"
+                        : "Uploaded Photos"}
+                    </th>
+                    <th>
+                      {language === "es" ? "Fotos Vendidas" : "Sold Photos"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedEvent?.albumIds.map(id => {
+                  {selectedEvent?.albumIds.map((id) => {
                     const alb = albumMap[id];
                     if (!alb) return null;
                     return (
                       <tr key={id}>
-                        <td data-label="Álbum"><strong>{alb.title}</strong></td>
+                        <td data-label="Álbum">
+                          <strong>{alb.title}</strong>
+                        </td>
                         <td data-label="Perfil">{alb.profileLabel}</td>
-                        <td data-label="Visitas">{compact.format(alb.views)}</td>
-                        <td data-label="Ingresos Totales">{money.format(alb.revenue)}</td>
-                        <td data-label="Fotos Publicadas">{compact.format(alb.photos)}</td>
+                        <td data-label="Visitas">
+                          {compact.format(alb.views)}
+                        </td>
+                        <td data-label="Ingresos Totales">
+                          {money.format(alb.revenue)}
+                        </td>
+                        <td data-label="Fotos Publicadas">
+                          {compact.format(alb.photos)}
+                        </td>
                         <td data-label="Fotos Vendidas">{alb.soldPhotos}</td>
                       </tr>
                     );
@@ -8532,13 +14611,19 @@ function EventsDashboard({
   );
 }
 export function Dashboard() {
-  const [rawDashboard, setRawDashboard] = useState<DashboardPayload | null>(null);
-  const [customProfileLabels, setCustomProfileLabels] = useState<Record<string, string>>({});
+  const [rawDashboard, setRawDashboard] = useState<DashboardPayload | null>(
+    null,
+  );
+  const [customProfileLabels, setCustomProfileLabels] = useState<
+    Record<string, string>
+  >({});
   const [activeView, setActiveView] = useState("consolidated");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSaleId, setActiveSaleId] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [selectedColumns, setSelectedColumns] = useState(EXPORT_COLUMNS.map((column) => column.key));
+  const [selectedColumns, setSelectedColumns] = useState(
+    EXPORT_COLUMNS.map((column) => column.key),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cacheTime, setCacheTime] = useState<string>("");
@@ -8556,8 +14641,12 @@ export function Dashboard() {
   const isLanguageMountedRef = useRef(false);
 
   // Clientes View States
-  const [clientsLocalData, setClientsLocalData] = useState<Record<string, ClientLocalProfile>>({});
-  const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null);
+  const [clientsLocalData, setClientsLocalData] = useState<
+    Record<string, ClientLocalProfile>
+  >({});
+  const [selectedClientKey, setSelectedClientKey] = useState<string | null>(
+    null,
+  );
   const [editingClientKey, setEditingClientKey] = useState<string | null>(null);
   const [editInstagram, setEditInstagram] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -8567,46 +14656,59 @@ export function Dashboard() {
   const [customEvents, setCustomEvents] = useState<CustomEvent[]>([]);
 
   // Global Lightbox and Local Directory states
-  const [activeLightboxPhoto, setActiveLightboxPhoto] = useState<GalleryPhotoItem | null>(null);
-  const [lightboxPhotoList, setLightboxPhotoList] = useState<GalleryPhotoItem[]>([]);
+  const [activeLightboxPhoto, setActiveLightboxPhoto] =
+    useState<GalleryPhotoItem | null>(null);
+  const [lightboxPhotoList, setLightboxPhotoList] = useState<
+    GalleryPhotoItem[]
+  >([]);
   const [localPhotoUrl, setLocalPhotoUrl] = useState<string | null>(null);
-  const [localSearchStatus, setLocalSearchStatus] = useState<"idle" | "searching" | "found" | "not_found" | "permission_denied">("idle");
+  const [localSearchStatus, setLocalSearchStatus] = useState<
+    "idle" | "searching" | "found" | "not_found" | "permission_denied"
+  >("idle");
   const [lightboxImageLoaded, setLightboxImageLoaded] = useState(false);
-  const [localDirHandle, setLocalDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [localDirHandle, setLocalDirHandle] =
+    useState<FileSystemDirectoryHandle | null>(null);
   const [localDirName, setLocalDirName] = useState<string | null>(null);
 
   // Reset lightboxImageLoaded when localPhotoUrl changes or activeLightboxPhoto changes
   useEffect(() => {
     setLightboxImageLoaded(false);
   }, [localPhotoUrl, activeLightboxPhoto]);
-  
+
   // Track active folder being searched for current photo (event folder or global fallback)
-  const [activeDirHandle, setActiveDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [activeDirHandle, setActiveDirHandle] =
+    useState<FileSystemDirectoryHandle | null>(null);
   const [activeDirName, setActiveDirName] = useState<string | null>(null);
   const [copiedLightboxId, setCopiedLightboxId] = useState<string | null>(null);
   const [permissionRetry, setPermissionRetry] = useState(0);
-  const [resolvedLocalUrls, setResolvedLocalUrls] = useState<Record<string, string>>({});
-  const [visiblePhotoKeys, setVisiblePhotoKeys] = useState<Record<string, boolean>>({});
+  const [resolvedLocalUrls, setResolvedLocalUrls] = useState<
+    Record<string, string>
+  >({});
+  const [visiblePhotoKeys, setVisiblePhotoKeys] = useState<
+    Record<string, boolean>
+  >({});
 
   // Clean up resolved local URLs that are no longer needed (neither visible in gallery nor active in lightbox)
   useEffect(() => {
-    const activeLightboxKey = activeLightboxPhoto ? `${activeLightboxPhoto.id}_${activeLightboxPhoto.sale.id}` : null;
-    
-    setResolvedLocalUrls(prev => {
+    const activeLightboxKey = activeLightboxPhoto
+      ? `${activeLightboxPhoto.id}_${activeLightboxPhoto.sale.id}`
+      : null;
+
+    setResolvedLocalUrls((prev) => {
       let changed = false;
       const next = { ...prev };
-      
+
       Object.entries(prev).forEach(([key, url]) => {
         const isCurrentlyOpenInLightbox = key === activeLightboxKey;
         const isVisibleInGallery = !!visiblePhotoKeys[key];
-        
+
         if (!isCurrentlyOpenInLightbox && !isVisibleInGallery) {
           URL.revokeObjectURL(url);
           delete next[key];
           changed = true;
         }
       });
-      
+
       return changed ? next : prev;
     });
   }, [activeLightboxPhoto, visiblePhotoKeys]);
@@ -8627,8 +14729,8 @@ export function Dashboard() {
   const albumMap = useMemo(() => {
     const map: Record<string, AlbumInsight> = {};
     if (rawDashboard) {
-      rawDashboard.profiles.forEach(profile => {
-        profile.albums.forEach(album => {
+      rawDashboard.profiles.forEach((profile) => {
+        profile.albums.forEach((album) => {
           map[album.id] = album;
         });
       });
@@ -8661,26 +14763,37 @@ export function Dashboard() {
         // 1. Resolve which directory handle to use (sub-event, event-specific, or global fallback)
         let dirHandle = null;
         let dirName = null;
-        const matchedEvent = customEvents.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
-        const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
+        const matchedEvent = customEvents.find((e) =>
+          e.albumIds.includes(activeLightboxPhoto.albumId),
+        );
+        const photoDate = getPhotoDate(
+          activeLightboxPhoto,
+          activeLightboxPhoto.sale,
+          albumMap,
+        );
         let matchedSubEvent = null;
-        
+
         if (matchedEvent) {
           // A. Try sub-event folder first if photo date maps to a sub-event with configured directory
-          matchedSubEvent = matchedEvent.subEvents.find(s => s.date === photoDate);
-          
+          matchedSubEvent = matchedEvent.subEvents.find(
+            (s) => s.date === photoDate,
+          );
+
           if (matchedSubEvent && matchedSubEvent.localDirName) {
-            dirHandle = await getLocalDirectoryHandleForSubEvent(matchedEvent.id, matchedSubEvent.id);
+            dirHandle = await getLocalDirectoryHandleForSubEvent(
+              matchedEvent.id,
+              matchedSubEvent.id,
+            );
             dirName = matchedSubEvent.localDirName;
           }
-          
+
           // B. Fallback to event-specific folder if no sub-event folder is loaded
           if (!dirHandle && matchedEvent.localDirName) {
             dirHandle = await getLocalDirectoryHandleForEvent(matchedEvent.id);
             dirName = matchedEvent.localDirName;
           }
         }
-        
+
         // C. Fallback to global directory folder if no event or sub-event folder is configured or handle is null
         if (!dirHandle) {
           dirHandle = localDirHandle;
@@ -8695,7 +14808,7 @@ export function Dashboard() {
           fileName: activeLightboxPhoto.originalFileName,
           albumId: activeLightboxPhoto.albumId,
           takenDate: activeLightboxPhoto.takenDate,
-          resolvedDate: photoDate
+          resolvedDate: photoDate,
         });
         console.log("[searchPhoto] Resolution Info:", {
           matchedEventName: matchedEvent?.name,
@@ -8703,7 +14816,7 @@ export function Dashboard() {
           matchedSubEventDirName: matchedSubEvent?.localDirName,
           resolvedDirName: dirName,
           resolvedDirHandleName: dirHandle?.name || "null",
-          usingGlobalFallback: dirHandle === localDirHandle && !!localDirHandle
+          usingGlobalFallback: dirHandle === localDirHandle && !!localDirHandle,
         });
 
         if (!active) return;
@@ -8748,7 +14861,7 @@ export function Dashboard() {
           if (!active) return;
           const url = URL.createObjectURL(file);
           currentUrl = url;
-          setResolvedLocalUrls(prev => ({ ...prev, [cacheKey]: url }));
+          setResolvedLocalUrls((prev) => ({ ...prev, [cacheKey]: url }));
           setLocalPhotoUrl(url);
           setLocalSearchStatus("found");
         } else {
@@ -8767,9 +14880,20 @@ export function Dashboard() {
     return () => {
       active = false;
     };
-  }, [activeLightboxPhoto, localDirHandle, localDirName, customEvents, permissionRetry, resolvedLocalUrls, albumMap]);
+  }, [
+    activeLightboxPhoto,
+    localDirHandle,
+    localDirName,
+    customEvents,
+    permissionRetry,
+    resolvedLocalUrls,
+    albumMap,
+  ]);
 
-  const handleOpenLightbox = (photo: GalleryPhotoItem, list?: GalleryPhotoItem[]) => {
+  const handleOpenLightbox = (
+    photo: GalleryPhotoItem,
+    list?: GalleryPhotoItem[],
+  ) => {
     setActiveLightboxPhoto(photo);
     setLightboxPhotoList(list || [photo]);
   };
@@ -8777,7 +14901,9 @@ export function Dashboard() {
   const handlePrevLightboxPhoto = useCallback(() => {
     if (!activeLightboxPhoto || lightboxPhotoList.length === 0) return;
     const currentIndex = lightboxPhotoList.findIndex(
-      p => p.id === activeLightboxPhoto.id && p.sale.id === activeLightboxPhoto.sale.id
+      (p) =>
+        p.id === activeLightboxPhoto.id &&
+        p.sale.id === activeLightboxPhoto.sale.id,
     );
     if (currentIndex > 0) {
       setActiveLightboxPhoto(lightboxPhotoList[currentIndex - 1]);
@@ -8787,7 +14913,9 @@ export function Dashboard() {
   const handleNextLightboxPhoto = useCallback(() => {
     if (!activeLightboxPhoto || lightboxPhotoList.length === 0) return;
     const currentIndex = lightboxPhotoList.findIndex(
-      p => p.id === activeLightboxPhoto.id && p.sale.id === activeLightboxPhoto.sale.id
+      (p) =>
+        p.id === activeLightboxPhoto.id &&
+        p.sale.id === activeLightboxPhoto.sale.id,
     );
     if (currentIndex >= 0 && currentIndex < lightboxPhotoList.length - 1) {
       setActiveLightboxPhoto(lightboxPhotoList[currentIndex + 1]);
@@ -8818,33 +14946,42 @@ export function Dashboard() {
   const handleLinkActiveFolder = async () => {
     try {
       if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
-        alert(language === "es"
-          ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
-          : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.");
+        alert(
+          language === "es"
+            ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
+            : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.",
+        );
         return;
       }
       if (!activeLightboxPhoto) return;
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
       if (handle) {
-        const matchedEvent = customEvents.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+        const matchedEvent = customEvents.find((e) =>
+          e.albumIds.includes(activeLightboxPhoto.albumId),
+        );
         if (matchedEvent) {
           await setLocalDirectoryHandleForEvent(matchedEvent.id, handle);
-          const updated = customEvents.map(e => e.id === matchedEvent.id ? { ...e, localDirName: handle.name } : e);
+          const updated = customEvents.map((e) =>
+            e.id === matchedEvent.id ? { ...e, localDirName: handle.name } : e,
+          );
           setCustomEvents(updated);
           try {
-            localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
+            localStorage.setItem(
+              "lumepic_custom_events",
+              JSON.stringify(updated),
+            );
           } catch (e) {
             console.error("Error saving event folder link:", e);
           }
-          
-          const matched = updated.find(e => e.id === matchedEvent.id);
+
+          const matched = updated.find((e) => e.id === matchedEvent.id);
           if (matched) {
             try {
               await fetch("/api/lumepic/events", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(matched)
+                body: JSON.stringify(matched),
               });
             } catch (e) {
               console.error("Error saving event folder link to API:", e);
@@ -8868,26 +15005,43 @@ export function Dashboard() {
 
   const handleUnlinkActiveFolder = async () => {
     if (!activeLightboxPhoto) return;
-    const matchedEvent = customEvents.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+    const matchedEvent = customEvents.find((e) =>
+      e.albumIds.includes(activeLightboxPhoto.albumId),
+    );
     if (matchedEvent) {
-      const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
-      const matchedSubEvent = matchedEvent.subEvents.find(s => s.date === photoDate);
+      const photoDate = getPhotoDate(
+        activeLightboxPhoto,
+        activeLightboxPhoto.sale,
+        albumMap,
+      );
+      const matchedSubEvent = matchedEvent.subEvents.find(
+        (s) => s.date === photoDate,
+      );
 
       if (matchedSubEvent && matchedSubEvent.localDirName) {
         // Unlink sub-event folder
-        await setLocalDirectoryHandleForSubEvent(matchedEvent.id, matchedSubEvent.id, null);
-        const updated = customEvents.map(e => {
+        await setLocalDirectoryHandleForSubEvent(
+          matchedEvent.id,
+          matchedSubEvent.id,
+          null,
+        );
+        const updated = customEvents.map((e) => {
           if (e.id === matchedEvent.id) {
             return {
               ...e,
-              subEvents: e.subEvents.map(s => s.id === matchedSubEvent.id ? { ...s, localDirName: null } : s)
+              subEvents: e.subEvents.map((s) =>
+                s.id === matchedSubEvent.id ? { ...s, localDirName: null } : s,
+              ),
             };
           }
           return e;
         });
         setCustomEvents(updated);
         try {
-          localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
+          localStorage.setItem(
+            "lumepic_custom_events",
+            JSON.stringify(updated),
+          );
         } catch (e) {
           console.error("Error unlinking subevent folder:", e);
         }
@@ -8896,7 +15050,9 @@ export function Dashboard() {
         let fallbackHandle = null;
         let fallbackName = null;
         if (matchedEvent.localDirName) {
-          fallbackHandle = await getLocalDirectoryHandleForEvent(matchedEvent.id);
+          fallbackHandle = await getLocalDirectoryHandleForEvent(
+            matchedEvent.id,
+          );
           fallbackName = matchedEvent.localDirName;
         } else {
           fallbackHandle = localDirHandle;
@@ -8907,10 +15063,15 @@ export function Dashboard() {
       } else {
         // Unlink event folder
         await setLocalDirectoryHandleForEvent(matchedEvent.id, null);
-        const updated = customEvents.map(e => e.id === matchedEvent.id ? { ...e, localDirName: null } : e);
+        const updated = customEvents.map((e) =>
+          e.id === matchedEvent.id ? { ...e, localDirName: null } : e,
+        );
         setCustomEvents(updated);
         try {
-          localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
+          localStorage.setItem(
+            "lumepic_custom_events",
+            JSON.stringify(updated),
+          );
         } catch (e) {
           console.error("Error unlinking event folder:", e);
         }
@@ -8934,38 +15095,47 @@ export function Dashboard() {
   const handleLinkEventFolder = async (eventId: string) => {
     try {
       if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
-        alert(language === "es"
-          ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
-          : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.");
+        alert(
+          language === "es"
+            ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
+            : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.",
+        );
         return;
       }
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
       if (handle) {
         await setLocalDirectoryHandleForEvent(eventId, handle);
-        const updated = customEvents.map(e => e.id === eventId ? { ...e, localDirName: handle.name } : e);
+        const updated = customEvents.map((e) =>
+          e.id === eventId ? { ...e, localDirName: handle.name } : e,
+        );
         setCustomEvents(updated);
         try {
-          localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
+          localStorage.setItem(
+            "lumepic_custom_events",
+            JSON.stringify(updated),
+          );
         } catch (e) {
           console.error("Error saving event folder link:", e);
         }
 
-        const matched = updated.find(e => e.id === eventId);
+        const matched = updated.find((e) => e.id === eventId);
         if (matched) {
           try {
             await fetch("/api/lumepic/events", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(matched)
+              body: JSON.stringify(matched),
             });
           } catch (e) {
             console.error("Error saving event folder link to API:", e);
           }
         }
-        
+
         if (activeLightboxPhoto) {
-          const matchedEvent = updated.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+          const matchedEvent = updated.find((e) =>
+            e.albumIds.includes(activeLightboxPhoto.albumId),
+          );
           if (matchedEvent && matchedEvent.id === eventId) {
             setActiveDirHandle(handle);
             setActiveDirName(handle.name);
@@ -8982,7 +15152,9 @@ export function Dashboard() {
 
   const handleUnlinkEventFolder = async (eventId: string) => {
     await setLocalDirectoryHandleForEvent(eventId, null);
-    const updated = customEvents.map(e => e.id === eventId ? { ...e, localDirName: null } : e);
+    const updated = customEvents.map((e) =>
+      e.id === eventId ? { ...e, localDirName: null } : e,
+    );
     setCustomEvents(updated);
     try {
       localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
@@ -8990,21 +15162,23 @@ export function Dashboard() {
       console.error("Error unlinking event folder:", e);
     }
 
-    const matched = updated.find(e => e.id === eventId);
+    const matched = updated.find((e) => e.id === eventId);
     if (matched) {
       try {
         await fetch("/api/lumepic/events", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(matched)
+          body: JSON.stringify(matched),
         });
       } catch (e) {
         console.error("Error saving event folder unlink to API:", e);
       }
     }
-    
+
     if (activeLightboxPhoto) {
-      const matchedEvent = updated.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+      const matchedEvent = updated.find((e) =>
+        e.albumIds.includes(activeLightboxPhoto.albumId),
+      );
       if (matchedEvent && matchedEvent.id === eventId) {
         setActiveDirHandle(null);
         setActiveDirName(null);
@@ -9014,52 +15188,70 @@ export function Dashboard() {
     }
   };
 
-  const handleLinkSubEventFolder = async (eventId: string, subEventId: string) => {
+  const handleLinkSubEventFolder = async (
+    eventId: string,
+    subEventId: string,
+  ) => {
     try {
       if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
-        alert(language === "es"
-          ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
-          : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.");
+        alert(
+          language === "es"
+            ? "Tu navegador no soporta el acceso al sistema de archivos local. Por favor usa Chrome, Edge u otro navegador compatible."
+            : "Your browser does not support local file system access. Please use Chrome, Edge, or another compatible browser.",
+        );
         return;
       }
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
       if (handle) {
         await setLocalDirectoryHandleForSubEvent(eventId, subEventId, handle);
-        const updated = customEvents.map(e => {
+        const updated = customEvents.map((e) => {
           if (e.id === eventId) {
             return {
               ...e,
-              subEvents: e.subEvents.map(s => s.id === subEventId ? { ...s, localDirName: handle.name } : s)
+              subEvents: e.subEvents.map((s) =>
+                s.id === subEventId ? { ...s, localDirName: handle.name } : s,
+              ),
             };
           }
           return e;
         });
         setCustomEvents(updated);
         try {
-          localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
+          localStorage.setItem(
+            "lumepic_custom_events",
+            JSON.stringify(updated),
+          );
         } catch (e) {
           console.error("Error saving subevent folder link:", e);
         }
 
-        const matched = updated.find(e => e.id === eventId);
+        const matched = updated.find((e) => e.id === eventId);
         if (matched) {
           try {
             await fetch("/api/lumepic/events", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(matched)
+              body: JSON.stringify(matched),
             });
           } catch (e) {
             console.error("Error saving subevent folder link to API:", e);
           }
         }
-        
+
         if (activeLightboxPhoto) {
-          const matchedEvent = updated.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+          const matchedEvent = updated.find((e) =>
+            e.albumIds.includes(activeLightboxPhoto.albumId),
+          );
           if (matchedEvent && matchedEvent.id === eventId) {
-            const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
-            const matchedSub = matchedEvent.subEvents.find(s => s.date === photoDate);
+            const photoDate = getPhotoDate(
+              activeLightboxPhoto,
+              activeLightboxPhoto.sale,
+              albumMap,
+            );
+            const matchedSub = matchedEvent.subEvents.find(
+              (s) => s.date === photoDate,
+            );
             if (matchedSub && matchedSub.id === subEventId) {
               setActiveDirHandle(handle);
               setActiveDirName(handle.name);
@@ -9075,13 +15267,18 @@ export function Dashboard() {
     }
   };
 
-  const handleUnlinkSubEventFolder = async (eventId: string, subEventId: string) => {
+  const handleUnlinkSubEventFolder = async (
+    eventId: string,
+    subEventId: string,
+  ) => {
     await setLocalDirectoryHandleForSubEvent(eventId, subEventId, null);
-    const updated = customEvents.map(e => {
+    const updated = customEvents.map((e) => {
       if (e.id === eventId) {
         return {
           ...e,
-          subEvents: e.subEvents.map(s => s.id === subEventId ? { ...s, localDirName: null } : s)
+          subEvents: e.subEvents.map((s) =>
+            s.id === subEventId ? { ...s, localDirName: null } : s,
+          ),
         };
       }
       return e;
@@ -9093,29 +15290,39 @@ export function Dashboard() {
       console.error("Error unlinking subevent folder:", e);
     }
 
-    const matched = updated.find(e => e.id === eventId);
+    const matched = updated.find((e) => e.id === eventId);
     if (matched) {
       try {
         await fetch("/api/lumepic/events", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(matched)
+          body: JSON.stringify(matched),
         });
       } catch (e) {
         console.error("Error saving subevent folder unlink to API:", e);
       }
     }
-    
+
     if (activeLightboxPhoto) {
-      const matchedEvent = updated.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+      const matchedEvent = updated.find((e) =>
+        e.albumIds.includes(activeLightboxPhoto.albumId),
+      );
       if (matchedEvent && matchedEvent.id === eventId) {
-        const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
-        const matchedSub = matchedEvent.subEvents.find(s => s.date === photoDate);
+        const photoDate = getPhotoDate(
+          activeLightboxPhoto,
+          activeLightboxPhoto.sale,
+          albumMap,
+        );
+        const matchedSub = matchedEvent.subEvents.find(
+          (s) => s.date === photoDate,
+        );
         if (matchedSub && matchedSub.id === subEventId) {
           let fallbackHandle = null;
           let fallbackName = null;
           if (matchedEvent.localDirName) {
-            fallbackHandle = await getLocalDirectoryHandleForEvent(matchedEvent.id);
+            fallbackHandle = await getLocalDirectoryHandleForEvent(
+              matchedEvent.id,
+            );
             fallbackName = matchedEvent.localDirName;
           } else {
             fallbackHandle = localDirHandle;
@@ -9140,17 +15347,17 @@ export function Dashboard() {
     if (!rawDashboard) return null;
     return {
       ...rawDashboard,
-      profiles: rawDashboard.profiles.map(profile => ({
+      profiles: rawDashboard.profiles.map((profile) => ({
         ...profile,
-        label: customProfileLabels[profile.id] || profile.label
+        label: customProfileLabels[profile.id] || profile.label,
       })),
       consolidated: {
         ...rawDashboard.consolidated,
-        profiles: rawDashboard.consolidated.profiles.map(p => ({
+        profiles: rawDashboard.consolidated.profiles.map((p) => ({
           ...p,
-          label: customProfileLabels[p.id] || p.label
-        }))
-      }
+          label: customProfileLabels[p.id] || p.label,
+        })),
+      },
     };
   }, [rawDashboard, customProfileLabels]);
 
@@ -9166,11 +15373,14 @@ export function Dashboard() {
   const handleSetCustomProfileLabel = (profileId: string, label: string) => {
     const updated = {
       ...customProfileLabels,
-      [profileId]: label
+      [profileId]: label,
     };
     setCustomProfileLabels(updated);
     try {
-      localStorage.setItem("lumepic_custom_profile_labels", JSON.stringify(updated));
+      localStorage.setItem(
+        "lumepic_custom_profile_labels",
+        JSON.stringify(updated),
+      );
     } catch (e) {
       console.error("Error al guardar customProfileLabels en localStorage", e);
     }
@@ -9207,8 +15417,11 @@ export function Dashboard() {
       const savedInterval = localStorage.getItem("lumepic_autopull_interval");
       if (savedInterval) setAutoPullInterval(parseInt(savedInterval, 10));
 
-      const savedNotifications = localStorage.getItem("lumepic_notifications_enabled");
-      if (savedNotifications) setNotificationsEnabled(savedNotifications === "true");
+      const savedNotifications = localStorage.getItem(
+        "lumepic_notifications_enabled",
+      );
+      if (savedNotifications)
+        setNotificationsEnabled(savedNotifications === "true");
 
       const savedView = localStorage.getItem("lumepic_active_view");
       if (savedView) {
@@ -9253,18 +15466,31 @@ export function Dashboard() {
 
   // Sincronizar activeView con los perfiles cargados (si es un ID de perfil que ya no existe, volver a consolidado)
   useEffect(() => {
-    if (dashboard && activeView !== "consolidated" && activeView !== "events" && activeView !== "clients" && activeView !== "watcher" && activeView !== "gallery" && activeView !== "culling") {
-      const exists = dashboard.profiles.some(p => p.id === activeView);
+    if (
+      dashboard &&
+      activeView !== "consolidated" &&
+      activeView !== "events" &&
+      activeView !== "clients" &&
+      activeView !== "watcher" &&
+      activeView !== "gallery" &&
+      activeView !== "event-photos" &&
+      activeView !== "culling" &&
+      activeView !== "cleaner"
+    ) {
+      const exists = dashboard.profiles.some((p) => p.id === activeView);
       if (!exists) {
         handleSetActiveView("consolidated");
       }
     }
   }, [dashboard, activeView]);
-  const handleSaveEvent = async (event: CustomEvent, subEventHandles?: Record<string, FileSystemDirectoryHandle | null>) => {
+  const handleSaveEvent = async (
+    event: CustomEvent,
+    subEventHandles?: Record<string, FileSystemDirectoryHandle | null>,
+  ) => {
     let updated: CustomEvent[] = [];
-    const exists = customEvents.some(e => e.id === event.id);
+    const exists = customEvents.some((e) => e.id === event.id);
     if (exists) {
-      updated = customEvents.map(e => (e.id === event.id ? event : e));
+      updated = customEvents.map((e) => (e.id === event.id ? event : e));
     } else {
       updated = [...customEvents, event];
     }
@@ -9273,7 +15499,7 @@ export function Dashboard() {
       await fetch("/api/lumepic/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(event)
+        body: JSON.stringify(event),
       });
       localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
     } catch (e) {
@@ -9289,9 +15515,9 @@ export function Dashboard() {
       }
     }
 
-    const originalEvent = customEvents.find(e => e.id === event.id);
+    const originalEvent = customEvents.find((e) => e.id === event.id);
     if (originalEvent) {
-      const activeSubEventIds = new Set(event.subEvents.map(s => s.id));
+      const activeSubEventIds = new Set(event.subEvents.map((s) => s.id));
       for (const oldSub of originalEvent.subEvents) {
         if (!activeSubEventIds.has(oldSub.id)) {
           await setLocalDirectoryHandleForSubEvent(event.id, oldSub.id, null);
@@ -9300,12 +15526,23 @@ export function Dashboard() {
     }
 
     if (activeLightboxPhoto) {
-      const matchedEvent = updated.find(e => e.albumIds.includes(activeLightboxPhoto.albumId));
+      const matchedEvent = updated.find((e) =>
+        e.albumIds.includes(activeLightboxPhoto.albumId),
+      );
       if (matchedEvent && matchedEvent.id === event.id) {
-        const photoDate = getPhotoDate(activeLightboxPhoto, activeLightboxPhoto.sale, albumMap);
-        const matchedSub = matchedEvent.subEvents.find(s => s.date === photoDate);
+        const photoDate = getPhotoDate(
+          activeLightboxPhoto,
+          activeLightboxPhoto.sale,
+          albumMap,
+        );
+        const matchedSub = matchedEvent.subEvents.find(
+          (s) => s.date === photoDate,
+        );
         if (matchedSub) {
-          const handle = await getLocalDirectoryHandleForSubEvent(event.id, matchedSub.id);
+          const handle = await getLocalDirectoryHandleForSubEvent(
+            event.id,
+            matchedSub.id,
+          );
           if (handle) {
             setActiveDirHandle(handle);
             setActiveDirName(handle.name);
@@ -9328,11 +15565,11 @@ export function Dashboard() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    const updated = customEvents.filter(e => e.id !== id);
+    const updated = customEvents.filter((e) => e.id !== id);
     setCustomEvents(updated);
     try {
       await fetch(`/api/lumepic/events?id=${encodeURIComponent(id)}`, {
-        method: "DELETE"
+        method: "DELETE",
       });
       localStorage.setItem("lumepic_custom_events", JSON.stringify(updated));
     } catch (e) {
@@ -9360,16 +15597,18 @@ export function Dashboard() {
       }
 
       // Validar contexto seguro (HTTPS o Localhost)
-      const isSecureContext = 
-        window.location.protocol === "https:" || 
-        window.location.hostname === "localhost" || 
+      const isSecureContext =
+        window.location.protocol === "https:" ||
+        window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1";
 
       if (!isSecureContext) {
         alert(
           "Las notificaciones de escritorio requieren un contexto seguro.\n\n" +
-          "Debido a políticas de seguridad de los navegadores modernos, las notificaciones están bloqueadas en conexiones HTTP sobre IPs de red local (como " + window.location.host + ").\n\n" +
-          "Para activarlas, accede a la aplicación mediante 'http://localhost:4000' desde la computadora que corre el servidor, o configura HTTPS."
+            "Debido a políticas de seguridad de los navegadores modernos, las notificaciones están bloqueadas en conexiones HTTP sobre IPs de red local (como " +
+            window.location.host +
+            ").\n\n" +
+            "Para activarlas, accede a la aplicación mediante 'http://localhost:4000' desde la computadora que corre el servidor, o configura HTTPS.",
         );
         return;
       }
@@ -9377,7 +15616,9 @@ export function Dashboard() {
       if (Notification.permission !== "granted") {
         const permission = await Notification.requestPermission();
         if (permission !== "granted") {
-          alert("Permiso de notificaciones denegado. Asegúrate de habilitar los permisos en la configuración de la barra de direcciones de tu navegador.");
+          alert(
+            "Permiso de notificaciones denegado. Asegúrate de habilitar los permisos en la configuración de la barra de direcciones de tu navegador.",
+          );
           return;
         }
       }
@@ -9388,57 +15629,73 @@ export function Dashboard() {
   };
 
   // Callback para procesar ventas nuevas y disparar notificaciones
-  const processNewSales = useCallback((data: DashboardPayload) => {
-    if (!data || !data.profiles) return;
+  const processNewSales = useCallback(
+    (data: DashboardPayload) => {
+      if (!data || !data.profiles) return;
 
-    const newSales: Array<{ sale: Sale; profileLabel: string }> = [];
+      const newSales: Array<{ sale: Sale; profileLabel: string }> = [];
 
-    data.profiles.forEach((profile) => {
-      profile.sales.forEach((sale) => {
-        if (knownSaleIdsRef.current.size > 0 && !knownSaleIdsRef.current.has(sale.id)) {
-          const profileLabel = customProfileLabels[profile.id] || profile.label;
-          newSales.push({ sale, profileLabel });
-        }
-      });
-    });
-
-    // Si es la carga inicial, poblamos los IDs conocidos sin alertar
-    if (knownSaleIdsRef.current.size === 0) {
       data.profiles.forEach((profile) => {
         profile.sales.forEach((sale) => {
-          knownSaleIdsRef.current.add(sale.id);
+          if (
+            knownSaleIdsRef.current.size > 0 &&
+            !knownSaleIdsRef.current.has(sale.id)
+          ) {
+            const profileLabel =
+              customProfileLabels[profile.id] || profile.label;
+            newSales.push({ sale, profileLabel });
+          }
         });
       });
-      return;
-    }
 
-    // Si se detectan ventas nuevas con respecto a la sincronización anterior
-    if (newSales.length > 0) {
-      newSales.forEach(({ sale, profileLabel }) => {
-        knownSaleIdsRef.current.add(sale.id);
+      // Si es la carga inicial, poblamos los IDs conocidos sin alertar
+      if (knownSaleIdsRef.current.size === 0) {
+        data.profiles.forEach((profile) => {
+          profile.sales.forEach((sale) => {
+            knownSaleIdsRef.current.add(sale.id);
+          });
+        });
+        return;
+      }
 
-        if (notificationsEnabled && "Notification" in window && Notification.permission === "granted") {
-          try {
-            const trimmedAlbum = sale.album ? sale.album.trim() : "";
-            const bodyText = language === "es"
-              ? `Compraron ${sale.photos} ${sale.photos === 1 ? "foto" : "fotos"} de ${trimmedAlbum}. Ganaste ${sale.isComped ? `${money.format(0)} (Bonificado)` : money.format(sale.total)}.`
-              : `Bought ${sale.photos} ${sale.photos === 1 ? "photo" : "photos"} of ${trimmedAlbum}. You earned ${sale.isComped ? `${money.format(0)} (Free)` : money.format(sale.total)}.`;
+      // Si se detectan ventas nuevas con respecto a la sincronización anterior
+      if (newSales.length > 0) {
+        newSales.forEach(({ sale, profileLabel }) => {
+          knownSaleIdsRef.current.add(sale.id);
 
-            const title = language === "es"
-              ? `¡Nueva venta para ${profileLabel}!`
-              : `New sale for ${profileLabel}!`;
+          if (
+            notificationsEnabled &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            try {
+              const trimmedAlbum = sale.album ? sale.album.trim() : "";
+              const bodyText =
+                language === "es"
+                  ? `Compraron ${sale.photos} ${sale.photos === 1 ? "foto" : "fotos"} de ${trimmedAlbum}. Ganaste ${sale.isComped ? `${money.format(0)} (Bonificado)` : money.format(sale.total)}.`
+                  : `Bought ${sale.photos} ${sale.photos === 1 ? "photo" : "photos"} of ${trimmedAlbum}. You earned ${sale.isComped ? `${money.format(0)} (Free)` : money.format(sale.total)}.`;
 
-            new Notification(title, {
-              body: bodyText,
-              icon: "/favicon.ico"
-            });
-          } catch (e) {
-            console.error("Error disparando notificación nativa de navegador", e);
+              const title =
+                language === "es"
+                  ? `¡Nueva venta para ${profileLabel}!`
+                  : `New sale for ${profileLabel}!`;
+
+              new Notification(title, {
+                body: bodyText,
+                icon: "/favicon.ico",
+              });
+            } catch (e) {
+              console.error(
+                "Error disparando notificación nativa de navegador",
+                e,
+              );
+            }
           }
-        }
-      });
-    }
-  }, [notificationsEnabled, customProfileLabels]);
+        });
+      }
+    },
+    [notificationsEnabled, customProfileLabels],
+  );
 
   useEffect(() => {
     async function loadClients() {
@@ -9446,7 +15703,7 @@ export function Dashboard() {
         const response = await fetch("/api/lumepic/clients");
         if (response.ok) {
           const data = await response.json();
-          
+
           if (Object.keys(data).length === 0) {
             const saved = localStorage.getItem("lumepic_clients_v1");
             if (saved) {
@@ -9455,12 +15712,12 @@ export function Dashboard() {
               fetch("/api/lumepic/clients", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(localParsed)
+                body: JSON.stringify(localParsed),
               }).catch(console.error);
               return;
             }
           }
-          
+
           setClientsLocalData(data);
         }
       } catch (e) {
@@ -9476,12 +15733,12 @@ export function Dashboard() {
       [key]: data,
     };
     setClientsLocalData(updated);
-    
+
     try {
       await fetch("/api/lumepic/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated)
+        body: JSON.stringify(updated),
       });
     } catch (e) {
       console.error("Error saving client data to API", e);
@@ -9490,7 +15747,11 @@ export function Dashboard() {
 
   const activeFetchControllerRef = useRef<AbortController | null>(null);
 
-  async function loadSummary(forceFetch: boolean = false, limit: number = 500, isBackground: boolean = false) {
+  async function loadSummary(
+    forceFetch: boolean = false,
+    limit: number = 500,
+    isBackground: boolean = false,
+  ) {
     if (!isBackground) {
       setLoading(true);
       setError(null);
@@ -9508,23 +15769,33 @@ export function Dashboard() {
         const cached = localStorage.getItem("lumepic_dashboard_cache_v2");
         if (cached) {
           const data = JSON.parse(cached) as DashboardPayload;
-          
-          const isStaleCache = data && data.profiles && data.profiles.some(p => p.totals.stripeFee === undefined);
+
+          const isStaleCache =
+            data &&
+            data.profiles &&
+            data.profiles.some((p) => p.totals.stripeFee === undefined);
           if (isStaleCache) {
             localStorage.removeItem("lumepic_dashboard_cache_v2");
             localStorage.removeItem("lumepic_dashboard_cached_at_v2");
           } else if (data && data.profiles && data.profiles.length > 0) {
             setRawDashboard(data);
             processNewSales(data);
-            const cachedTime = localStorage.getItem("lumepic_dashboard_cached_at_v2");
+            const cachedTime = localStorage.getItem(
+              "lumepic_dashboard_cached_at_v2",
+            );
             if (cachedTime) {
               setCacheTime(cachedTime);
             }
-            const maxSalesInCache = Math.max(...data.profiles.map(p => p.sales.length), 0);
+            const maxSalesInCache = Math.max(
+              ...data.profiles.map((p) => p.sales.length),
+              0,
+            );
             if (maxSalesInCache >= 1000) {
               setHasFetchedFullHistory(true);
             }
-            const selected = data.profiles.find((profile) => profile.id === activeView) || data.profiles[0];
+            const selected =
+              data.profiles.find((profile) => profile.id === activeView) ||
+              data.profiles[0];
             if (selected) {
               setActiveSaleId(selected.sales[0]?.id ?? null);
             }
@@ -9541,34 +15812,55 @@ export function Dashboard() {
     }
 
     try {
-      const response = await fetch(`/api/lumepic/summary?limit=${limit}${forceFetch ? "&bypassCache=true" : ""}`, {
-        cache: "no-store",
-        signal: controller.signal
-      });
-      if (!response.ok) throw new Error(`API local respondio ${response.status}`);
+      const response = await fetch(
+        `/api/lumepic/summary?limit=${limit}${forceFetch ? "&bypassCache=true" : ""}`,
+        {
+          cache: "no-store",
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok)
+        throw new Error(`API local respondio ${response.status}`);
 
       const data = (await response.json()) as DashboardPayload;
 
       // Evitar sobreescribir datos reales con datos de demostración
-      if (rawDashboard && rawDashboard.source === "live" && data.source === "demo") {
+      if (
+        rawDashboard &&
+        rawDashboard.source === "live" &&
+        data.source === "demo"
+      ) {
         setRawDashboard({
           ...rawDashboard,
-          warning: "Sincronización fallida. El servidor volvió a modo demo temporalmente. Preservando datos reales anteriores."
+          warning:
+            "Sincronización fallida. El servidor volvió a modo demo temporalmente. Preservando datos reales anteriores.",
         });
 
         // Actualizamos el indicador de tiempo de refresco
-        const timeStr = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-        const dateStr = new Date().toLocaleDateString("es-AR", { month: "short", day: "numeric" });
+        const timeStr = new Date().toLocaleTimeString("es-AR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const dateStr = new Date().toLocaleDateString("es-AR", {
+          month: "short",
+          day: "numeric",
+        });
         setCacheTime(`${dateStr}, ${timeStr}`);
         return;
       }
 
       // Verificar si algún perfil falló en la respuesta viva del servidor
-      const hasFailedProfiles = data.profiles.some(p => p.warning && p.warning.includes("No pude conectar"));
+      const hasFailedProfiles = data.profiles.some(
+        (p) => p.warning && p.warning.includes("No pude conectar"),
+      );
 
-      if (hasFailedProfiles && rawDashboard && rawDashboard.profiles.some(p => p.totals.revenue > 0)) {
-        const updatedProfiles = rawDashboard.profiles.map(p => {
-          const failedPartner = data.profiles.find(fp => fp.id === p.id);
+      if (
+        hasFailedProfiles &&
+        rawDashboard &&
+        rawDashboard.profiles.some((p) => p.totals.revenue > 0)
+      ) {
+        const updatedProfiles = rawDashboard.profiles.map((p) => {
+          const failedPartner = data.profiles.find((fp) => fp.id === p.id);
           if (failedPartner && failedPartner.warning) {
             return { ...p, warning: failedPartner.warning };
           }
@@ -9576,44 +15868,66 @@ export function Dashboard() {
         });
 
         const updatedWarning = data.profiles
-          .map(p => p.warning)
+          .map((p) => p.warning)
           .filter(Boolean)
           .join(" ");
 
         setRawDashboard({
           ...rawDashboard,
           profiles: updatedProfiles,
-          warning: updatedWarning || "Sincronización fallida. Mostrando datos anteriores de la caché."
+          warning:
+            updatedWarning ||
+            "Sincronización fallida. Mostrando datos anteriores de la caché.",
         });
 
         // Actualizamos el indicador de tiempo de refresco
-        const timeStr = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-        const dateStr = new Date().toLocaleDateString("es-AR", { month: "short", day: "numeric" });
+        const timeStr = new Date().toLocaleTimeString("es-AR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const dateStr = new Date().toLocaleDateString("es-AR", {
+          month: "short",
+          day: "numeric",
+        });
         setCacheTime(`${dateStr}, ${timeStr}`);
         return;
       }
 
       // Save to localStorage cache and update cached timestamp
-      const timeStr = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-      const dateStr = new Date().toLocaleDateString("es-AR", { month: "short", day: "numeric" });
+      const timeStr = new Date().toLocaleTimeString("es-AR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const dateStr = new Date().toLocaleDateString("es-AR", {
+        month: "short",
+        day: "numeric",
+      });
       const fullStr = `${dateStr}, ${timeStr}`;
 
       try {
-        localStorage.setItem("lumepic_dashboard_cache_v2", JSON.stringify(data));
+        localStorage.setItem(
+          "lumepic_dashboard_cache_v2",
+          JSON.stringify(data),
+        );
         localStorage.setItem("lumepic_dashboard_cached_at_v2", fullStr);
       } catch (e) {
         console.error("Error writing dashboard cache to localStorage", e);
       }
 
       setCacheTime(fullStr);
-      const maxSales = Math.max(...data.profiles.map(p => p.sales.length), 0);
+      const maxSales = Math.max(...data.profiles.map((p) => p.sales.length), 0);
       if (maxSales >= 1000) {
         setHasFetchedFullHistory(true);
       }
       setRawDashboard(data);
       processNewSales(data);
-      const selected = data.profiles.find((profile) => profile.id === activeView) || data.profiles[0];
-      if (selected && (!activeSaleId || !selected.sales.some(s => s.id === activeSaleId))) {
+      const selected =
+        data.profiles.find((profile) => profile.id === activeView) ||
+        data.profiles[0];
+      if (
+        selected &&
+        (!activeSaleId || !selected.sales.some((s) => s.id === activeSaleId))
+      ) {
         setActiveSaleId(selected.sales[0]?.id ?? null);
       }
     } catch (caught: any) {
@@ -9621,7 +15935,9 @@ export function Dashboard() {
         return;
       }
       if (!isBackground) {
-        setError(caught instanceof Error ? caught.message : "No pude cargar los datos");
+        setError(
+          caught instanceof Error ? caught.message : "No pude cargar los datos",
+        );
       } else {
         console.error("Background summary refresh failed:", caught);
       }
@@ -9681,6 +15997,58 @@ export function Dashboard() {
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
+  const [chartGrouping, setChartGrouping] = useState<
+    "daily" | "weekly" | "monthly"
+  >("monthly");
+
+  const allSalesDateSpan = useMemo(() => {
+    if (!dashboard) return 0;
+    const dates: number[] = [];
+    dashboard.profiles.forEach((profile) => {
+      profile.sales.forEach((sale) => {
+        const d = new Date(sale.date);
+        if (!isNaN(d.getTime())) {
+          dates.push(d.getTime());
+        }
+      });
+    });
+    if (dates.length === 0) return 0;
+    const min = Math.min(...dates);
+    const max = Math.max(...dates);
+    return Math.ceil((max - min) / (1000 * 60 * 60 * 24));
+  }, [dashboard]);
+
+  const isLargeRange = useMemo(() => {
+    if (filterType === "ytd" || filterType === "year") {
+      return true;
+    }
+    if (filterType === "all") {
+      return allSalesDateSpan >= 360;
+    }
+    if (filterType === "custom" && customStart && customEnd) {
+      const start = new Date(customStart + "T00:00:00");
+      const end = new Date(customEnd + "T23:59:59");
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays >= 360;
+    }
+    return false;
+  }, [filterType, customStart, customEnd, allSalesDateSpan]);
+
+  const resolvedGrouping = useMemo(() => {
+    if (!isLargeRange) return "daily";
+    return chartGrouping === "daily" ? "monthly" : chartGrouping;
+  }, [isLargeRange, chartGrouping]);
+
+  useEffect(() => {
+    if (isLargeRange) {
+      if (chartGrouping === "daily") {
+        setChartGrouping("monthly");
+      }
+    } else {
+      setChartGrouping("daily");
+    }
+  }, [isLargeRange, chartGrouping]);
 
   const availableYears = useMemo(() => {
     if (!dashboard) return [];
@@ -9750,15 +16118,26 @@ export function Dashboard() {
         void loadSummary(true, 1000);
       }
     }
-  }, [dashboard, filterType, selectedYear, customStart, loading, hasFetchedFullHistory]);
+  }, [
+    dashboard,
+    filterType,
+    selectedYear,
+    customStart,
+    loading,
+    hasFetchedFullHistory,
+  ]);
 
   const activeProfile = useMemo(
-    () => dashboard?.profiles.find((profile) => profile.id === activeView) ?? dashboard?.profiles[0],
-    [activeView, dashboard]
+    () =>
+      dashboard?.profiles.find((profile) => profile.id === activeView) ??
+      dashboard?.profiles[0],
+    [activeView, dashboard],
   );
   const selectedSale = useMemo<Sale | undefined>(
-    () => activeProfile?.sales.find((sale) => sale.id === activeSaleId) ?? activeProfile?.sales[0],
-    [activeSaleId, activeProfile]
+    () =>
+      activeProfile?.sales.find((sale) => sale.id === activeSaleId) ??
+      activeProfile?.sales[0],
+    [activeSaleId, activeProfile],
   );
 
   const filteredConsolidatedTrend = useMemo(() => {
@@ -9799,14 +16178,17 @@ export function Dashboard() {
       return true;
     };
 
-    const groups: Record<string, {
-      date: Date;
-      label: string;
-      totalRevenue: number;
-      totalPhotos: number;
-      totalSales: number;
-      [profileId: string]: any;
-    }> = {};
+    const groups: Record<
+      string,
+      {
+        date: Date;
+        label: string;
+        totalRevenue: number;
+        totalPhotos: number;
+        totalSales: number;
+        [profileId: string]: any;
+      }
+    > = {};
 
     dashboard.profiles.forEach((profile) => {
       profile.sales.forEach((sale) => {
@@ -9815,9 +16197,12 @@ export function Dashboard() {
         if (isNaN(saleDate.getTime())) return;
         if (!matchesFilter(saleDate)) return;
 
-        const key = toLocalYYYYMMDD(saleDate);
+        const { key, label } = getGroupingKeyAndLabel(
+          saleDate,
+          resolvedGrouping,
+          language,
+        );
         if (!groups[key]) {
-          const label = saleDate.toLocaleDateString("es-AR", { month: "short", day: "2-digit" });
           groups[key] = {
             date: saleDate,
             label,
@@ -9832,10 +16217,12 @@ export function Dashboard() {
         }
 
         groups[key].totalRevenue += sale.total;
-        groups[key].totalPhotos += (sale.photos || 0);
+        groups[key].totalPhotos += sale.photos || 0;
         groups[key].totalSales += 1;
-        groups[key][`${profile.id}_revenue`] = (groups[key][`${profile.id}_revenue`] || 0) + sale.total;
-        groups[key][`${profile.id}_photos`] = (groups[key][`${profile.id}_photos`] || 0) + (sale.photos || 0);
+        groups[key][`${profile.id}_revenue`] =
+          (groups[key][`${profile.id}_revenue`] || 0) + sale.total;
+        groups[key][`${profile.id}_photos`] =
+          (groups[key][`${profile.id}_photos`] || 0) + (sale.photos || 0);
       });
     });
 
@@ -9850,12 +16237,22 @@ export function Dashboard() {
         totalSales: g.totalSales,
       };
       dashboard.profiles.forEach((p) => {
-        point[`${p.id}_revenue`] = Number((g[`${p.id}_revenue`] || 0).toFixed(2));
+        point[`${p.id}_revenue`] = Number(
+          (g[`${p.id}_revenue`] || 0).toFixed(2),
+        );
         point[`${p.id}_photos`] = g[`${p.id}_photos`] || 0;
       });
       return point;
     });
-  }, [dashboard, filterType, selectedYear, customStart, customEnd]);
+  }, [
+    dashboard,
+    filterType,
+    selectedYear,
+    customStart,
+    customEnd,
+    resolvedGrouping,
+    language,
+  ]);
 
   const filteredProfileTrend = useMemo(() => {
     if (!dashboard || !activeProfile) return [];
@@ -9895,13 +16292,16 @@ export function Dashboard() {
       return true;
     };
 
-    const groups: Record<string, {
-      date: Date;
-      label: string;
-      sales: number;
-      revenue: number;
-      photos: number;
-    }> = {};
+    const groups: Record<
+      string,
+      {
+        date: Date;
+        label: string;
+        sales: number;
+        revenue: number;
+        photos: number;
+      }
+    > = {};
 
     activeProfile.sales.forEach((sale) => {
       if (sale.isComped) return;
@@ -9909,9 +16309,12 @@ export function Dashboard() {
       if (isNaN(saleDate.getTime())) return;
       if (!matchesFilter(saleDate)) return;
 
-      const key = toLocalYYYYMMDD(saleDate);
+      const { key, label } = getGroupingKeyAndLabel(
+        saleDate,
+        resolvedGrouping,
+        language,
+      );
       if (!groups[key]) {
-        const label = saleDate.toLocaleDateString("es-AR", { month: "short", day: "2-digit" });
         groups[key] = {
           date: saleDate,
           label,
@@ -9923,7 +16326,7 @@ export function Dashboard() {
 
       groups[key].sales += 1;
       groups[key].revenue += sale.total;
-      groups[key].photos += (sale.photos || 0);
+      groups[key].photos += sale.photos || 0;
     });
 
     const sortedKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
@@ -9934,23 +16337,42 @@ export function Dashboard() {
       revenue: Number(groups[key].revenue.toFixed(2)),
       photos: groups[key].photos,
     }));
-  }, [dashboard, activeProfile, filterType, selectedYear, customStart, customEnd]);
-
+  }, [
+    dashboard,
+    activeProfile,
+    filterType,
+    selectedYear,
+    customStart,
+    customEnd,
+    resolvedGrouping,
+    language,
+  ]);
 
   const clients = useMemo(() => {
     if (!dashboard) return [];
-    const clientMap: Record<string, {
-      key: string;
-      name: string;
-      email: string;
-      totalSpent: number;
-      salesCount: number;
-      sales: { saleId: string; date: string; album: string; total: number; photographerName: string }[];
-    }> = {};
+    const clientMap: Record<
+      string,
+      {
+        key: string;
+        name: string;
+        email: string;
+        totalSpent: number;
+        salesCount: number;
+        sales: {
+          saleId: string;
+          date: string;
+          album: string;
+          total: number;
+          photographerName: string;
+        }[];
+      }
+    > = {};
 
     dashboard.profiles.forEach((profile) => {
       profile.sales.forEach((sale) => {
-        const key = sale.buyerEmail ? sale.buyerEmail.toLowerCase().trim() : sale.buyer.toLowerCase().trim();
+        const key = sale.buyerEmail
+          ? sale.buyerEmail.toLowerCase().trim()
+          : sale.buyer.toLowerCase().trim();
         if (!clientMap[key]) {
           clientMap[key] = {
             key,
@@ -9961,9 +16383,11 @@ export function Dashboard() {
             sales: [],
           };
         }
-        
+
         // Prevent duplicate sales for the same client to avoid duplicate React keys
-        const isDuplicate = clientMap[key].sales.some((s) => s.saleId === sale.id);
+        const isDuplicate = clientMap[key].sales.some(
+          (s) => s.saleId === sale.id,
+        );
         if (!isDuplicate) {
           clientMap[key].totalSpent += sale.total;
           clientMap[key].salesCount += 1;
@@ -9979,7 +16403,9 @@ export function Dashboard() {
     });
 
     Object.values(clientMap).forEach((client) => {
-      client.sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      client.sales.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
     });
 
     return Object.values(clientMap).sort((a, b) => b.totalSpent - a.totalSpent);
@@ -9991,7 +16417,9 @@ export function Dashboard() {
   const isClientsView = activeView === "clients";
   const isWatcherView = activeView === "watcher";
   const isGalleryView = activeView === "gallery";
+  const isEventPhotosView = activeView === "event-photos";
   const isCullingView = activeView === "culling";
+  const isCleanerView = activeView === "cleaner";
   const showConsolidated = activeView === "consolidated";
 
   const switcherOptions = useMemo(() => {
@@ -10009,25 +16437,25 @@ export function Dashboard() {
         label: t.consolidated,
         icon: null,
         dotColor: null,
-        badge: null
+        badge: null,
       },
       {
         id: "events",
         label: language === "es" ? "Eventos" : "Events",
         icon: <Calendar size={14} />,
         dotColor: null,
-        badge: language === "es" ? "Nuevo" : "New"
-      }
+        badge: language === "es" ? "Nuevo" : "New",
+      },
     ];
 
     if (dashboard) {
-      dashboard.profiles.forEach(profile => {
+      dashboard.profiles.forEach((profile) => {
         opts.push({
           id: profile.id,
           label: profile.label,
           icon: null,
           dotColor: profile.color,
-          badge: null
+          badge: null,
         });
       });
     }
@@ -10037,7 +16465,7 @@ export function Dashboard() {
       label: t.clients,
       icon: <UserRound size={14} />,
       dotColor: null,
-      badge: null
+      badge: null,
     });
 
     opts.push({
@@ -10045,7 +16473,7 @@ export function Dashboard() {
       label: language === "es" ? "Carpeta Watcher" : "Watcher Folder",
       icon: <FolderSync size={14} />,
       dotColor: null,
-      badge: null
+      badge: null,
     });
 
     opts.push({
@@ -10053,7 +16481,15 @@ export function Dashboard() {
       label: language === "es" ? "Galería Vendidas" : "Sold Gallery",
       icon: <Image size={14} />,
       dotColor: null,
-      badge: null
+      badge: null,
+    });
+
+    opts.push({
+      id: "event-photos",
+      label: language === "es" ? "Fotos de Eventos" : "Event Photos",
+      icon: <Camera size={14} />,
+      dotColor: null,
+      badge: null,
     });
 
     opts.push({
@@ -10061,7 +16497,15 @@ export function Dashboard() {
       label: "AI Culling",
       icon: <Sparkles size={14} />,
       dotColor: null,
-      badge: "Beta"
+      badge: "Beta",
+    });
+
+    opts.push({
+      id: "cleaner",
+      label: language === "es" ? "Limpiador de Álbum" : "Album Cleaner",
+      icon: <Trash2 size={14} />,
+      dotColor: null,
+      badge: language === "es" ? "Nuevo" : "New",
     });
 
     return opts;
@@ -10076,9 +16520,21 @@ export function Dashboard() {
       <main className="skeleton">
         <section className="skeleton-inner">
           <p className="eyebrow">Lumepic dashboard</p>
-          <h1>{language === "es" ? "No pude cargar ventas" : "Could not load sales"}</h1>
-          <p>{error ?? (language === "es" ? "La API local no respondió." : "The local API did not respond.")}</p>
-          <button className="text-button" onClick={() => void loadSummary(true)}>
+          <h1>
+            {language === "es"
+              ? "No pude cargar ventas"
+              : "Could not load sales"}
+          </h1>
+          <p>
+            {error ??
+              (language === "es"
+                ? "La API local no respondió."
+                : "The local API did not respond.")}
+          </p>
+          <button
+            className="text-button"
+            onClick={() => void loadSummary(true)}
+          >
             {language === "es" ? "Reintentar" : "Retry"}
           </button>
         </section>
@@ -10087,18 +16543,48 @@ export function Dashboard() {
   }
 
   const totals = isClientsView
-    ? { revenue: clients.reduce((acc, c) => acc + c.totalSpent, 0), albums: dashboard.consolidated.totals.albums }
-    : isWatcherView || isCullingView
+    ? {
+        revenue: clients.reduce((acc, c) => acc + c.totalSpent, 0),
+        albums: dashboard.consolidated.totals.albums,
+      }
+    : isWatcherView || isCullingView || isCleanerView
       ? { revenue: 0, albums: dashboard.consolidated.totals.albums }
       : isGalleryView
-        ? { revenue: dashboard.consolidated.totals.revenue, albums: dashboard.consolidated.totals.albums }
-        : (showConsolidated ? dashboard.consolidated.totals : activeProfile?.totals);
-  const warnings = [dashboard.warning, !showConsolidated && !isClientsView && !isWatcherView && !isGalleryView && !isCullingView ? activeProfile?.warning : null].filter(Boolean).join(" ");
-  const exportProfiles = showConsolidated ? dashboard.profiles : activeProfile ? [activeProfile] : [];
-  const exportRowCount = exportProfiles.reduce((count, profile) => count + profile.sales.length, 0);
-  const exportScopeLabel = showConsolidated 
-    ? (language === "es" ? "Todos los perfiles" : "All profiles") 
-    : activeProfile?.label ?? (language === "es" ? "Perfil" : "Profile");
+        ? {
+            revenue: dashboard.consolidated.totals.revenue,
+            albums: dashboard.consolidated.totals.albums,
+          }
+        : showConsolidated
+          ? dashboard.consolidated.totals
+          : activeProfile?.totals;
+  const warnings = [
+    dashboard.warning,
+    !showConsolidated &&
+    !isClientsView &&
+    !isWatcherView &&
+    !isGalleryView &&
+    !isEventPhotosView &&
+    !isCullingView &&
+    !isCleanerView
+      ? activeProfile?.warning
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const exportProfiles = showConsolidated
+    ? dashboard.profiles
+    : activeProfile
+      ? [activeProfile]
+      : [];
+  const exportRowCount = exportProfiles.reduce(
+    (count, profile) => count + profile.sales.length,
+    0,
+  );
+  const exportScopeLabel = showConsolidated
+    ? language === "es"
+      ? "Todos los perfiles"
+      : "All profiles"
+    : (activeProfile?.label ?? (language === "es" ? "Perfil" : "Profile"));
   const fidelityCodes = dashboard.profiles
     .map((profile) => profile.profile.fidelityCode?.code)
     .filter(Boolean);
@@ -10106,24 +16592,34 @@ export function Dashboard() {
     ? `${fidelityCodes.length} ${language === "es" ? "codigos" : "codes"}`
     : activeProfile?.profile.fidelityCode
       ? `${activeProfile.profile.fidelityCode.code} - ${formatFidelityDiscount(activeProfile.profile.fidelityCode)}`
-      : (language === "es" ? "Sin codigo" : "No code");
+      : language === "es"
+        ? "Sin codigo"
+        : "No code";
 
   function toggleColumn(columnKey: string) {
     setSelectedColumns((current) =>
-      current.includes(columnKey) ? current.filter((key) => key !== columnKey) : [...current, columnKey]
+      current.includes(columnKey)
+        ? current.filter((key) => key !== columnKey)
+        : [...current, columnKey],
     );
   }
 
   function exportCsv() {
-    const columns = EXPORT_COLUMNS.filter((column) => selectedColumns.includes(column.key));
+    const columns = EXPORT_COLUMNS.filter((column) =>
+      selectedColumns.includes(column.key),
+    );
     const rows = [
       columns.map((column) => column.label),
       ...exportProfiles.flatMap((profile) =>
-        profile.sales.map((sale) => columns.map((column) => String(column.getValue(profile, sale) ?? "")))
-      )
+        profile.sales.map((sale) =>
+          columns.map((column) => String(column.getValue(profile, sale) ?? "")),
+        ),
+      ),
     ];
     const stamp = new Date().toISOString().slice(0, 10);
-    const scope = showConsolidated ? "consolidado" : activeProfile?.id ?? "perfil";
+    const scope = showConsolidated
+      ? "consolidado"
+      : (activeProfile?.id ?? "perfil");
     downloadCsv(`lumepic-${scope}-${stamp}.csv`, rows);
     setExportOpen(false);
   }
@@ -10142,34 +16638,62 @@ export function Dashboard() {
         </div>
         <div className="top-actions">
           {/* Desktop Switcher */}
-          <div className="profile-switcher desktop-only" aria-label="Dashboard selector">
+          <div
+            className="profile-switcher desktop-only"
+            aria-label="Dashboard selector"
+          >
             {switcherOptions.map((opt) => (
               <button
                 key={opt.id}
-                className={activeView === opt.id ? "switcher-item active" : "switcher-item"}
+                className={
+                  activeView === opt.id
+                    ? "switcher-item active"
+                    : "switcher-item"
+                }
                 onClick={() => {
                   handleSetActiveView(opt.id);
-                  if (opt.id !== "consolidated" && opt.id !== "clients" && opt.id !== "watcher" && opt.id !== "gallery" && opt.id !== "culling") {
-                    const profile = dashboard.profiles.find(p => p.id === opt.id);
+                  if (
+                    opt.id !== "consolidated" &&
+                    opt.id !== "clients" &&
+                    opt.id !== "watcher" &&
+                    opt.id !== "gallery" &&
+                    opt.id !== "event-photos" &&
+                    opt.id !== "culling" &&
+                    opt.id !== "cleaner"
+                  ) {
+                    const profile = dashboard.profiles.find(
+                      (p) => p.id === opt.id,
+                    );
                     setActiveSaleId(profile?.sales[0]?.id ?? null);
                   }
                 }}
-                style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                  alignItems: "center",
+                }}
               >
                 {opt.icon && <span style={{ marginRight: 6 }}>{opt.icon}</span>}
-                {opt.dotColor && <span className="profile-dot" style={{ background: opt.dotColor }} />}
+                {opt.dotColor && (
+                  <span
+                    className="profile-dot"
+                    style={{ background: opt.dotColor }}
+                  />
+                )}
                 {opt.label}
                 {opt.badge && (
-                  <span style={{
-                    fontSize: "0.62rem",
-                    fontWeight: "bold",
-                    background: "var(--accent, #6366f1)",
-                    color: "#fff",
-                    padding: "2px 6px",
-                    borderRadius: "999px",
-                    marginLeft: "6px",
-                    textTransform: "uppercase"
-                  }}>
+                  <span
+                    style={{
+                      fontSize: "0.62rem",
+                      fontWeight: "bold",
+                      background: "var(--accent, #6366f1)",
+                      color: "#fff",
+                      padding: "2px 6px",
+                      borderRadius: "999px",
+                      marginLeft: "6px",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {opt.badge}
                   </span>
                 )}
@@ -10183,28 +16707,54 @@ export function Dashboard() {
               className="mobile-switcher-trigger"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-expanded={mobileMenuOpen}
-              aria-label={language === "es" ? "Selector de menú" : "Menu selector"}
+              aria-label={
+                language === "es" ? "Selector de menú" : "Menu selector"
+              }
             >
               <Menu size={20} />
               <div className="mobile-switcher-current">
                 {(() => {
-                  const currentOpt = switcherOptions.find(o => o.id === activeView);
+                  const currentOpt = switcherOptions.find(
+                    (o) => o.id === activeView,
+                  );
                   if (!currentOpt) return null;
                   return (
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      {currentOpt.dotColor && <span className="profile-dot" style={{ background: currentOpt.dotColor }} />}
-                      {currentOpt.icon && <span style={{ display: "inline-flex", alignItems: "center" }}>{currentOpt.icon}</span>}
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      {currentOpt.dotColor && (
+                        <span
+                          className="profile-dot"
+                          style={{ background: currentOpt.dotColor }}
+                        />
+                      )}
+                      {currentOpt.icon && (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          {currentOpt.icon}
+                        </span>
+                      )}
                       <span>{currentOpt.label}</span>
                       {currentOpt.badge && (
-                        <span style={{
-                          fontSize: "0.58rem",
-                          fontWeight: "bold",
-                          background: "var(--accent, #6366f1)",
-                          color: "#fff",
-                          padding: "1px 5px",
-                          borderRadius: "999px",
-                          textTransform: "uppercase"
-                        }}>
+                        <span
+                          style={{
+                            fontSize: "0.58rem",
+                            fontWeight: "bold",
+                            background: "var(--accent, #6366f1)",
+                            color: "#fff",
+                            padding: "1px 5px",
+                            borderRadius: "999px",
+                            textTransform: "uppercase",
+                          }}
+                        >
                           {currentOpt.badge}
                         </span>
                       )}
@@ -10216,11 +16766,24 @@ export function Dashboard() {
 
             {mobileMenuOpen && (
               <>
-                <div className="mobile-switcher-backdrop" onClick={() => setMobileMenuOpen(false)} />
+                <div
+                  className="mobile-switcher-backdrop"
+                  onClick={() => setMobileMenuOpen(false)}
+                />
                 <div className="mobile-switcher-dropdown">
                   <div className="mobile-switcher-header">
                     <h3>{language === "es" ? "Navegación" : "Navigation"}</h3>
-                    <button className="icon-button" onClick={() => setMobileMenuOpen(false)} style={{ width: 28, height: 28, minHeight: 28, borderRadius: "50%", padding: 0 }}>
+                    <button
+                      className="icon-button"
+                      onClick={() => setMobileMenuOpen(false)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        minHeight: 28,
+                        borderRadius: "50%",
+                        padding: 0,
+                      }}
+                    >
                       <X size={14} />
                     </button>
                   </div>
@@ -10228,25 +16791,46 @@ export function Dashboard() {
                     {switcherOptions.map((opt) => (
                       <button
                         key={opt.id}
-                        className={activeView === opt.id ? "mobile-switcher-item active" : "mobile-switcher-item"}
+                        className={
+                          activeView === opt.id
+                            ? "mobile-switcher-item active"
+                            : "mobile-switcher-item"
+                        }
                         onClick={() => {
                           handleSetActiveView(opt.id);
-                          if (opt.id !== "consolidated" && opt.id !== "clients" && opt.id !== "watcher" && opt.id !== "gallery" && opt.id !== "culling") {
-                            const profile = dashboard.profiles.find(p => p.id === opt.id);
+                          if (
+                            opt.id !== "consolidated" &&
+                            opt.id !== "clients" &&
+                            opt.id !== "watcher" &&
+                            opt.id !== "gallery" &&
+                            opt.id !== "event-photos" &&
+                            opt.id !== "culling" &&
+                            opt.id !== "cleaner"
+                          ) {
+                            const profile = dashboard.profiles.find(
+                              (p) => p.id === opt.id,
+                            );
                             setActiveSaleId(profile?.sales[0]?.id ?? null);
                           }
                           setMobileMenuOpen(false);
                         }}
                       >
-                        {opt.dotColor && <span className="profile-dot" style={{ background: opt.dotColor }} />}
-                        {opt.icon && <span className="item-icon">{opt.icon}</span>}
+                        {opt.dotColor && (
+                          <span
+                            className="profile-dot"
+                            style={{ background: opt.dotColor }}
+                          />
+                        )}
+                        {opt.icon && (
+                          <span className="item-icon">{opt.icon}</span>
+                        )}
                         <span className="item-label">{opt.label}</span>
                         {opt.badge && (
-                          <span className="item-badge">
-                            {opt.badge}
-                          </span>
+                          <span className="item-badge">{opt.badge}</span>
                         )}
-                        {activeView === opt.id && <Check size={16} className="item-check" />}
+                        {activeView === opt.id && (
+                          <Check size={16} className="item-check" />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -10256,19 +16840,43 @@ export function Dashboard() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {cacheTime && (
-              <span style={{ fontSize: "0.78rem", color: "var(--muted)", whiteSpace: "nowrap" }} title={language === "es" ? "Última actualización de datos" : "Last data update"}>
+              <span
+                style={{
+                  fontSize: "0.78rem",
+                  color: "var(--muted)",
+                  whiteSpace: "nowrap",
+                }}
+                title={
+                  language === "es"
+                    ? "Última actualización de datos"
+                    : "Last data update"
+                }
+              >
                 {language === "es" ? "Actualizado:" : "Updated:"} {cacheTime}
               </span>
             )}
-            <button className="icon-button" onClick={() => void loadSummary(true)} title={t.refresh} disabled={loading}>
+            <button
+              className="icon-button"
+              onClick={() => void loadSummary(true)}
+              title={t.refresh}
+              disabled={loading}
+            >
               <RefreshCw size={18} className={loading ? "spin" : ""} />
             </button>
-            <button className="icon-button" onClick={() => setSettingsOpen(true)} title={t.settings}>
+            <button
+              className="icon-button"
+              onClick={() => setSettingsOpen(true)}
+              title={t.settings}
+            >
               <Settings size={18} />
             </button>
           </div>
           {activeView !== "clients" && activeView !== "gallery" && (
-            <button className="text-button" onClick={() => setExportOpen(true)} title={t.exportView}>
+            <button
+              className="text-button"
+              onClick={() => setExportOpen(true)}
+              title={t.exportView}
+            >
               <Download size={16} />
               {t.export}
             </button>
@@ -10280,20 +16888,64 @@ export function Dashboard() {
         <aside className="sidebar">
           <div className="profile-card">
             <div className="avatar">
-              {isEventsView ? "EVT" : isClientsView ? "CLT" : isWatcherView ? "WCH" : isGalleryView ? "GAL" : isCullingView ? "AI" : showConsolidated ? "ALL" : initials(activeProfile?.profile.name ?? "")}
+              {isEventsView
+                ? "EVT"
+                : isClientsView
+                  ? "CLT"
+                  : isWatcherView
+                    ? "WCH"
+                    : isGalleryView
+                      ? "GAL"
+                      : isEventPhotosView
+                        ? "CAM"
+                        : isCullingView
+                          ? "AI"
+                          : showConsolidated
+                            ? "ALL"
+                            : initials(activeProfile?.profile.name ?? "")}
             </div>
-            <h2>{isEventsView ? (language === "es" ? "Eventos" : "Events") : isClientsView ? t.clients : isWatcherView ? (language === "es" ? "Watcher Local" : "Local Watcher") : isGalleryView ? (language === "es" ? "Galería" : "Gallery") : isCullingView ? "AI Culling" : showConsolidated ? t.consolidated : activeProfile?.profile.name}</h2>
+            <h2>
+              {isEventsView
+                ? language === "es"
+                  ? "Eventos"
+                  : "Events"
+                : isClientsView
+                  ? t.clients
+                  : isWatcherView
+                    ? language === "es"
+                      ? "Watcher Local"
+                      : "Local Watcher"
+                    : isGalleryView
+                      ? language === "es"
+                        ? "Galería"
+                        : "Gallery"
+                      : isEventPhotosView
+                        ? language === "es"
+                          ? "Fotos de Eventos"
+                          : "Event Photos"
+                        : isCullingView
+                          ? "AI Culling"
+                          : showConsolidated
+                            ? t.consolidated
+                            : activeProfile?.profile.name}
+            </h2>
             <p>
               {isEventsView
-                ? (language === "es" ? "Agrupación de ventas" : "Sales grouping")
+                ? language === "es"
+                  ? "Agrupación de ventas"
+                  : "Sales grouping"
                 : isClientsView
                   ? `${clients.length} ${t.buyersCount}`
                   : isWatcherView
-                    ? (language === "es" ? "Sincronizador automático" : "Automatic synchronizer")
+                    ? language === "es"
+                      ? "Sincronizador automático"
+                      : "Automatic synchronizer"
                     : isGalleryView
                       ? t.salesAndPaid
                       : isCullingView
-                        ? (language === "es" ? "Organizador de fotos (Beta)" : "Photo organizer (Beta)")
+                        ? language === "es"
+                          ? "Organizador de fotos (Beta)"
+                          : "Photo organizer (Beta)"
                         : showConsolidated
                           ? `${dashboard.profiles.length} ${t.profilesConnected}`
                           : activeProfile?.profile.studio}
@@ -10305,22 +16957,35 @@ export function Dashboard() {
                 <div className="nav-item">
                   <Calendar size={18} />
                   <div>
-                    <strong>{language === "es" ? "Agrupación" : "Grouping"}</strong>
-                    <span>{customEvents.length} {language === "es" ? "eventos" : "events"}</span>
+                    <strong>
+                      {language === "es" ? "Agrupación" : "Grouping"}
+                    </strong>
+                    <span>
+                      {customEvents.length}{" "}
+                      {language === "es" ? "eventos" : "events"}
+                    </span>
                   </div>
                 </div>
                 <div className="nav-item">
                   <TrendingUp size={18} />
                   <div>
-                    <strong>{language === "es" ? "Desglose" : "Breakdown"}</strong>
-                    <span>{language === "es" ? "Por sub-eventos" : "By sub-events"}</span>
+                    <strong>
+                      {language === "es" ? "Desglose" : "Breakdown"}
+                    </strong>
+                    <span>
+                      {language === "es" ? "Por sub-eventos" : "By sub-events"}
+                    </span>
                   </div>
                 </div>
                 <div className="nav-item">
                   <Activity size={18} />
                   <div>
-                    <strong>{language === "es" ? "Análisis" : "Analytics"}</strong>
-                    <span>{language === "es" ? "100% Local" : "100% Local"}</span>
+                    <strong>
+                      {language === "es" ? "Análisis" : "Analytics"}
+                    </strong>
+                    <span>
+                      {language === "es" ? "100% Local" : "100% Local"}
+                    </span>
                   </div>
                 </div>
               </>
@@ -10329,14 +16994,18 @@ export function Dashboard() {
                 <div className="nav-item">
                   <Activity size={18} />
                   <div>
-                    <strong>{language === "es" ? "Precisión" : "Accuracy"}</strong>
+                    <strong>
+                      {language === "es" ? "Precisión" : "Accuracy"}
+                    </strong>
                     <span>COCO-SSD + Laplacian</span>
                   </div>
                 </div>
                 <div className="nav-item">
                   <Sparkles size={18} />
                   <div>
-                    <strong>{language === "es" ? "Procesador" : "Engine"}</strong>
+                    <strong>
+                      {language === "es" ? "Procesador" : "Engine"}
+                    </strong>
                     <span>TensorFlow.js (Beta)</span>
                   </div>
                 </div>
@@ -10344,7 +17013,9 @@ export function Dashboard() {
                   <CheckCircle2 size={18} />
                   <div>
                     <strong>{language === "es" ? "Estado" : "Status"}</strong>
-                    <span>{language === "es" ? "Beta activa" : "Active Beta"}</span>
+                    <span>
+                      {language === "es" ? "Beta activa" : "Active Beta"}
+                    </span>
                   </div>
                 </div>
               </>
@@ -10353,21 +17024,40 @@ export function Dashboard() {
                 <div className="nav-item">
                   <CircleDollarSign size={18} />
                   <div>
-                    <strong>{isWatcherView ? (language === "es" ? "Cargas" : "Uploads") : t.revenue}</strong>
-                    <span>{isWatcherView ? t.activeHistory : money.format(totals?.revenue ?? 0)}</span>
+                    <strong>
+                      {isWatcherView
+                        ? language === "es"
+                          ? "Cargas"
+                          : "Uploads"
+                        : t.revenue}
+                    </strong>
+                    <span>
+                      {isWatcherView
+                        ? t.activeHistory
+                        : money.format(totals?.revenue ?? 0)}
+                    </span>
                   </div>
                 </div>
                 <div className="nav-item">
                   <Images size={18} />
                   <div>
                     <strong>{language === "es" ? "Álbumes" : "Albums"}</strong>
-                    <span>{totals?.albums ?? 0} {language === "es" ? "publicados" : "published"}</span>
+                    <span>
+                      {totals?.albums ?? 0}{" "}
+                      {language === "es" ? "publicados" : "published"}
+                    </span>
                   </div>
                 </div>
                 <div className="nav-item">
                   <UserRound size={18} />
                   <div>
-                    <strong>{isWatcherView ? (language === "es" ? "Servicio" : "Service") : t.profile}</strong>
+                    <strong>
+                      {isWatcherView
+                        ? language === "es"
+                          ? "Servicio"
+                          : "Service"
+                        : t.profile}
+                    </strong>
                     <span>
                       {isClientsView
                         ? t.baseOfClients
@@ -10385,7 +17075,11 @@ export function Dashboard() {
                   <Tags size={18} />
                   <div>
                     <strong>Fidelity code</strong>
-                    <span>{isClientsView || isWatcherView || isGalleryView ? t.localStorage : fidelityLabel}</span>
+                    <span>
+                      {isClientsView || isWatcherView || isGalleryView
+                        ? t.localStorage
+                        : fidelityLabel}
+                    </span>
                   </div>
                 </div>
               </>
@@ -10393,7 +17087,8 @@ export function Dashboard() {
           </nav>
           <p className="timestamp">
             <Sparkles size={16} />
-            {dashboard.source === "live" ? t.realData : t.demoMode} - {formatDate(dashboard.updatedAt, language)}
+            {dashboard.source === "live" ? t.realData : t.demoMode} -{" "}
+            {formatDate(dashboard.updatedAt, language)}
           </p>
         </aside>
 
@@ -10418,10 +17113,10 @@ export function Dashboard() {
               onUnlinkSubEventFolder={handleUnlinkSubEventFolder}
             />
           ) : isGalleryView ? (
-            <GalleryDashboard 
-              profiles={dashboard.profiles} 
-              language={language} 
-              onOpenLightbox={handleOpenLightbox} 
+            <GalleryDashboard
+              profiles={dashboard.profiles}
+              language={language}
+              onOpenLightbox={handleOpenLightbox}
               customEvents={customEvents}
               localDirHandle={localDirHandle}
               localDirName={localDirName}
@@ -10432,8 +17127,23 @@ export function Dashboard() {
               activeLightboxPhoto={activeLightboxPhoto}
               permissionRetry={permissionRetry}
             />
+          ) : isEventPhotosView ? (
+            <EventPhotosDashboard
+              profiles={dashboard.profiles}
+              customEvents={customEvents}
+              language={language}
+              localDirHandle={localDirHandle}
+              resolvedLocalUrls={resolvedLocalUrls}
+              setResolvedLocalUrls={setResolvedLocalUrls}
+              permissionRetry={permissionRetry}
+            />
           ) : isCullingView ? (
             <CullingDashboard language={language} />
+          ) : isCleanerView ? (
+            <CleanerDashboard
+              language={language}
+              profiles={dashboard.profiles}
+            />
           ) : isClientsView ? (
             <ClientsDashboard
               clients={clients}
@@ -10456,12 +17166,15 @@ export function Dashboard() {
                 saveClientData(key, {
                   instagram: editInstagram,
                   notes: editNotes,
-                  customName: editCustomName || undefined
+                  customName: editCustomName || undefined,
                 });
               }}
             />
           ) : activeView === "watcher" ? (
-            <WatcherDashboard profiles={dashboard.profiles} language={language} />
+            <WatcherDashboard
+              profiles={dashboard.profiles}
+              language={language}
+            />
           ) : showConsolidated ? (
             <ConsolidatedDashboard
               consolidated={dashboard.consolidated}
@@ -10478,6 +17191,9 @@ export function Dashboard() {
               allProfiles={dashboard.profiles}
               language={language}
               customEvents={customEvents}
+              resolvedGrouping={resolvedGrouping}
+              setChartGrouping={setChartGrouping}
+              isLargeRange={isLargeRange}
             />
           ) : activeProfile ? (
             <ProfileDashboard
@@ -10496,13 +17212,20 @@ export function Dashboard() {
               availableYears={availableYears}
               language={language}
               onOpenLightbox={handleOpenLightbox}
+              resolvedGrouping={resolvedGrouping}
+              setChartGrouping={setChartGrouping}
+              isLargeRange={isLargeRange}
             />
           ) : null}
         </div>
       </section>
       <footer className="app-footer">
         <span>Lumepic Sales Dashboard v{APP_VERSION}</span>
-        <a href="https://instagram.com/soyphotographer" target="_blank" rel="noreferrer">
+        <a
+          href="https://instagram.com/soyphotographer"
+          target="_blank"
+          rel="noreferrer"
+        >
           Created by @soyphotographer
         </a>
       </footer>
@@ -10511,7 +17234,9 @@ export function Dashboard() {
           columns={EXPORT_COLUMNS}
           onClose={() => setExportOpen(false)}
           onExport={exportCsv}
-          onSelectAll={() => setSelectedColumns(EXPORT_COLUMNS.map((column) => column.key))}
+          onSelectAll={() =>
+            setSelectedColumns(EXPORT_COLUMNS.map((column) => column.key))
+          }
           onSelectNone={() => setSelectedColumns([])}
           onToggleColumn={toggleColumn}
           rowCount={exportRowCount}
@@ -10536,25 +17261,39 @@ export function Dashboard() {
       />
       {/* Global Lightbox Modal */}
       {activeLightboxPhoto && (
-        <div className="lightbox-backdrop" onClick={() => setActiveLightboxPhoto(null)}>
-          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <button className="lightbox-close" onClick={() => {
-              setActiveLightboxPhoto(null);
-            }}>
+        <div
+          className="lightbox-backdrop"
+          onClick={() => setActiveLightboxPhoto(null)}
+        >
+          <div
+            className="lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="lightbox-close"
+              onClick={() => {
+                setActiveLightboxPhoto(null);
+              }}
+            >
               <X size={20} />
             </button>
             <div className="lightbox-grid">
-              <div className="lightbox-image-wrap" style={{ position: "relative" }}>
+              <div
+                className="lightbox-image-wrap"
+                style={{ position: "relative" }}
+              >
                 {/* Open local file button on top-right of image */}
-                {activeDirName && localSearchStatus === "found" && localPhotoUrl && (
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (localPhotoUrl) {
-                        const newTab = window.open();
-                        if (newTab) {
-                          newTab.document.write(`
+                {activeDirName &&
+                  localSearchStatus === "found" &&
+                  localPhotoUrl && (
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (localPhotoUrl) {
+                          const newTab = window.open();
+                          if (newTab) {
+                            newTab.document.write(`
                             <html>
                               <head>
                                 <title>${activeLightboxPhoto.originalFileName || "Local File"}</title>
@@ -10581,110 +17320,168 @@ export function Dashboard() {
                               </body>
                             </html>
                           `);
-                          newTab.document.close();
+                            newTab.document.close();
+                          }
                         }
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: "16px",
+                        right: "16px",
+                        padding: "6px 12px",
+                        borderRadius: "20px",
+                        background: "rgba(0, 0, 0, 0.65)",
+                        backdropFilter: "blur(10px)",
+                        WebkitBackdropFilter: "blur(10px)",
+                        color: "white",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "0.78rem",
+                        fontWeight: "600",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        zIndex: 5,
+                        textDecoration: "none",
+                        transition: "all 0.2s ease",
+                      }}
+                      className="lightbox-open-local-btn"
+                      title={
+                        language === "es"
+                          ? "Abrir archivo local en nueva pestaña"
+                          : "Open local file in new tab"
                       }
-                    }}
+                    >
+                      <ExternalLink size={12} />
+                      <span>
+                        {language === "es"
+                          ? "Abrir archivo local"
+                          : "Open local file"}
+                      </span>
+                    </a>
+                  )}
+                {/* Local status badge on image corner */}
+                {activeDirName && localSearchStatus !== "idle" && (
+                  <div
                     style={{
                       position: "absolute",
                       top: "16px",
-                      right: "16px",
+                      left: "16px",
                       padding: "6px 12px",
                       borderRadius: "20px",
                       background: "rgba(0, 0, 0, 0.65)",
                       backdropFilter: "blur(10px)",
                       WebkitBackdropFilter: "blur(10px)",
                       color: "white",
-                      display: "inline-flex",
+                      display: "flex",
                       alignItems: "center",
                       gap: "6px",
                       fontSize: "0.78rem",
                       fontWeight: "600",
                       border: "1px solid rgba(255, 255, 255, 0.15)",
                       zIndex: 5,
-                      textDecoration: "none",
-                      transition: "all 0.2s ease"
                     }}
-                    className="lightbox-open-local-btn"
-                    title={language === "es" ? "Abrir archivo local en nueva pestaña" : "Open local file in new tab"}
                   >
-                    <ExternalLink size={12} />
-                    <span>{language === "es" ? "Abrir archivo local" : "Open local file"}</span>
-                  </a>
-                )}
-                {/* Local status badge on image corner */}
-                {activeDirName && localSearchStatus !== "idle" && (
-                  <div style={{
-                    position: "absolute",
-                    top: "16px",
-                    left: "16px",
-                    padding: "6px 12px",
-                    borderRadius: "20px",
-                    background: "rgba(0, 0, 0, 0.65)",
-                    backdropFilter: "blur(10px)",
-                    WebkitBackdropFilter: "blur(10px)",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "0.78rem",
-                    fontWeight: "600",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    zIndex: 5
-                  }}>
                     {localSearchStatus === "searching" && (
                       <>
-                        <span style={{
-                          width: "8px",
-                          height: "8px",
-                          border: "1px solid white",
-                          borderTopColor: "transparent",
-                          borderRadius: "50%",
-                          animation: "spin 0.8s linear infinite",
-                          display: "inline-block"
-                        }} />
-                        <span>{language === "es" ? "BUSCANDO ALTA..." : "SEARCHING HD..."}</span>
+                        <span
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            border: "1px solid white",
+                            borderTopColor: "transparent",
+                            borderRadius: "50%",
+                            animation: "spin 0.8s linear infinite",
+                            display: "inline-block",
+                          }}
+                        />
+                        <span>
+                          {language === "es"
+                            ? "BUSCANDO ALTA..."
+                            : "SEARCHING HD..."}
+                        </span>
                       </>
                     )}
                     {localSearchStatus === "found" && !lightboxImageLoaded && (
                       <>
-                        <span style={{
-                          width: "8px",
-                          height: "8px",
-                          border: "1px solid white",
-                          borderTopColor: "transparent",
-                          borderRadius: "50%",
-                          animation: "spin 0.8s linear infinite",
-                          display: "inline-block"
-                        }} />
-                        <span>{language === "es" ? "CARGANDO ALTA..." : "LOADING HD..."}</span>
+                        <span
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            border: "1px solid white",
+                            borderTopColor: "transparent",
+                            borderRadius: "50%",
+                            animation: "spin 0.8s linear infinite",
+                            display: "inline-block",
+                          }}
+                        />
+                        <span>
+                          {language === "es"
+                            ? "CARGANDO ALTA..."
+                            : "LOADING HD..."}
+                        </span>
                       </>
                     )}
                     {localSearchStatus === "found" && lightboxImageLoaded && (
                       <>
-                        <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }} />
-                        <span>{language === "es" ? "ALTA RESOLUCIÓN LOCAL" : "LOCAL HIGH-RES"}</span>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: "#10b981",
+                          }}
+                        />
+                        <span>
+                          {language === "es"
+                            ? "ALTA RESOLUCIÓN LOCAL"
+                            : "LOCAL HIGH-RES"}
+                        </span>
                       </>
                     )}
                     {localSearchStatus === "not_found" && (
                       <>
-                        <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b" }} />
-                        <span>{language === "es" ? "VISTA PREVIA WEB" : "WEB PREVIEW"}</span>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: "#f59e0b",
+                          }}
+                        />
+                        <span>
+                          {language === "es"
+                            ? "VISTA PREVIA WEB"
+                            : "WEB PREVIEW"}
+                        </span>
                       </>
                     )}
                     {localSearchStatus === "permission_denied" && (
                       <>
-                        <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#ef4444" }} />
-                        <span>{language === "es" ? "ACCESO BLOQUEADO" : "ACCESS DENIED"}</span>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: "#ef4444",
+                          }}
+                        />
+                        <span>
+                          {language === "es"
+                            ? "ACCESO BLOQUEADO"
+                            : "ACCESS DENIED"}
+                        </span>
                       </>
                     )}
                   </div>
                 )}
-                
+
                 {imageSrc ? (
-                  <img 
-                    src={imageSrc} 
-                    alt={activeLightboxPhoto.originalFileName} 
+                  <img
+                    src={imageSrc}
+                    alt={activeLightboxPhoto.originalFileName}
                     onLoad={() => {
                       if (localPhotoUrl && imageSrc === localPhotoUrl) {
                         setLightboxImageLoaded(true);
@@ -10692,93 +17489,137 @@ export function Dashboard() {
                     }}
                   />
                 ) : null}
-                {lightboxPhotoList.length > 1 && (() => {
-                  const currentIndex = lightboxPhotoList.findIndex(
-                    p => p.id === activeLightboxPhoto.id && p.sale.id === activeLightboxPhoto.sale.id
-                  );
-                  const hasPrev = currentIndex > 0;
-                  const hasNext = currentIndex >= 0 && currentIndex < lightboxPhotoList.length - 1;
-                  return (
-                    <>
-                      {hasPrev && (
-                        <button
-                          onClick={handlePrevLightboxPhoto}
-                          style={{
-                            position: "absolute",
-                            left: "16px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            background: "rgba(255, 255, 255, 0.85)",
-                            backdropFilter: "blur(4px)",
-                            border: "1px solid var(--line)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                            color: "var(--ink)",
-                            zIndex: 10,
-                            transition: "all 0.2s ease"
-                          }}
-                          title={language === "es" ? "Anterior (Flecha Izquierda)" : "Previous (Left Arrow)"}
-                          className="lightbox-nav-btn"
-                        >
-                          <ChevronLeft size={20} />
-                        </button>
-                      )}
-                      {hasNext && (
-                        <button
-                          onClick={handleNextLightboxPhoto}
-                          style={{
-                            position: "absolute",
-                            right: "16px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            background: "rgba(255, 255, 255, 0.85)",
-                            backdropFilter: "blur(4px)",
-                            border: "1px solid var(--line)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                            color: "var(--ink)",
-                            zIndex: 10,
-                            transition: "all 0.2s ease"
-                          }}
-                          title={language === "es" ? "Siguiente (Flecha Derecha)" : "Next (Right Arrow)"}
-                          className="lightbox-nav-btn"
-                        >
-                          <ChevronRight size={20} />
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
+                {lightboxPhotoList.length > 1 &&
+                  (() => {
+                    const currentIndex = lightboxPhotoList.findIndex(
+                      (p) =>
+                        p.id === activeLightboxPhoto.id &&
+                        p.sale.id === activeLightboxPhoto.sale.id,
+                    );
+                    const hasPrev = currentIndex > 0;
+                    const hasNext =
+                      currentIndex >= 0 &&
+                      currentIndex < lightboxPhotoList.length - 1;
+                    return (
+                      <>
+                        {hasPrev && (
+                          <button
+                            onClick={handlePrevLightboxPhoto}
+                            style={{
+                              position: "absolute",
+                              left: "16px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "40px",
+                              height: "40px",
+                              borderRadius: "50%",
+                              background: "rgba(255, 255, 255, 0.85)",
+                              backdropFilter: "blur(4px)",
+                              border: "1px solid var(--line)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                              color: "var(--ink)",
+                              zIndex: 10,
+                              transition: "all 0.2s ease",
+                            }}
+                            title={
+                              language === "es"
+                                ? "Anterior (Flecha Izquierda)"
+                                : "Previous (Left Arrow)"
+                            }
+                            className="lightbox-nav-btn"
+                          >
+                            <ChevronLeft size={20} />
+                          </button>
+                        )}
+                        {hasNext && (
+                          <button
+                            onClick={handleNextLightboxPhoto}
+                            style={{
+                              position: "absolute",
+                              right: "16px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "40px",
+                              height: "40px",
+                              borderRadius: "50%",
+                              background: "rgba(255, 255, 255, 0.85)",
+                              backdropFilter: "blur(4px)",
+                              border: "1px solid var(--line)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                              color: "var(--ink)",
+                              zIndex: 10,
+                              transition: "all 0.2s ease",
+                            }}
+                            title={
+                              language === "es"
+                                ? "Siguiente (Flecha Derecha)"
+                                : "Next (Right Arrow)"
+                            }
+                            className="lightbox-nav-btn"
+                          >
+                            <ChevronRight size={20} />
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
               </div>
               <div className="lightbox-details">
-                <h2>{language === "es" ? "Detalle de Fotografía" : "Photograph Detail"}</h2>
+                <h2>
+                  {language === "es"
+                    ? "Detalle de Fotografía"
+                    : "Photograph Detail"}
+                </h2>
                 {/* Local Folder Integration Section (Only show if permission is denied and needs action) */}
                 {activeDirName && localSearchStatus === "permission_denied" && (
-                  <div className="lightbox-plate" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                      <span style={{ fontSize: "0.8rem", color: "#ef4444", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <div
+                    className="lightbox-plate"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        width: "100%",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "#ef4444",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
                         <AlertTriangle size={14} />
-                        {language === "es" ? "Acceso denegado a la carpeta" : "Folder access denied"}
+                        {language === "es"
+                          ? "Acceso denegado a la carpeta"
+                          : "Folder access denied"}
                       </span>
                       <button
                         onClick={() => {
                           if (activeDirHandle) {
-                            verifyDirectoryPermission(activeDirHandle, true).then(has => {
+                            verifyDirectoryPermission(
+                              activeDirHandle,
+                              true,
+                            ).then((has) => {
                               if (has) {
                                 setLocalSearchStatus("idle");
-                                setPermissionRetry(prev => prev + 1);
+                                setPermissionRetry((prev) => prev + 1);
                               }
                             });
                           }
@@ -10790,7 +17631,7 @@ export function Dashboard() {
                           border: "none",
                           borderRadius: "4px",
                           padding: "2px 8px",
-                          cursor: "pointer"
+                          cursor: "pointer",
                         }}
                       >
                         {language === "es" ? "Permitir" : "Allow"}
@@ -10800,13 +17641,38 @@ export function Dashboard() {
                 )}
                 <div className="lightbox-list">
                   <div style={{ justifyContent: "flex-start", gap: "8px" }}>
-                    <strong style={{ display: "flex", alignItems: "center", gap: "8px", fontFamily: "var(--font-mono)", fontSize: "0.85rem", textAlign: "left", color: "var(--ink)" }}>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "220px" }} title={activeLightboxPhoto.originalFileName}>
+                    <strong
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.85rem",
+                        textAlign: "left",
+                        color: "var(--ink)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: "220px",
+                        }}
+                        title={activeLightboxPhoto.originalFileName}
+                      >
                         {activeLightboxPhoto.originalFileName}
                       </span>
                       <button
-                        onClick={() => handleCopyLightboxFileName(activeLightboxPhoto.originalFileName, activeLightboxPhoto.id)}
-                        title={language === "es" ? "Copiar nombre" : "Copy name"}
+                        onClick={() =>
+                          handleCopyLightboxFileName(
+                            activeLightboxPhoto.originalFileName,
+                            activeLightboxPhoto.id,
+                          )
+                        }
+                        title={
+                          language === "es" ? "Copiar nombre" : "Copy name"
+                        }
                         style={{
                           background: "none",
                           border: "none",
@@ -10814,11 +17680,18 @@ export function Dashboard() {
                           padding: "2px",
                           display: "inline-flex",
                           alignItems: "center",
-                          color: copiedLightboxId === activeLightboxPhoto.id ? "var(--green)" : "var(--muted)",
-                          transition: "color 0.2s ease"
+                          color:
+                            copiedLightboxId === activeLightboxPhoto.id
+                              ? "var(--green)"
+                              : "var(--muted)",
+                          transition: "color 0.2s ease",
                         }}
                       >
-                        {copiedLightboxId === activeLightboxPhoto.id ? <Check size={13} /> : <Copy size={13} />}
+                        {copiedLightboxId === activeLightboxPhoto.id ? (
+                          <Check size={13} />
+                        ) : (
+                          <Copy size={13} />
+                        )}
                       </button>
                     </strong>
                   </div>
@@ -10826,72 +17699,155 @@ export function Dashboard() {
                     <span>{language === "es" ? "Comprador:" : "Buyer:"}</span>
                     <strong>
                       {activeLightboxPhoto.sale.isComped ? (
-                        <span className="buyer-badge is-comped" style={{ position: "static", padding: "4px 10px", fontSize: "0.78rem" }}>Lumepic</span>
+                        <span
+                          className="buyer-badge is-comped"
+                          style={{
+                            position: "static",
+                            padding: "4px 10px",
+                            fontSize: "0.78rem",
+                          }}
+                        >
+                          Lumepic
+                        </span>
                       ) : (
                         activeLightboxPhoto.sale.buyer
                       )}
                     </strong>
                   </div>
-                  {activeLightboxPhoto.sale.buyerEmail && !activeLightboxPhoto.sale.isComped && (
-                    <div>
-                      <span>{language === "es" ? "Email del comprador:" : "Buyer email:"}</span>
-                      <strong style={{ fontSize: "0.88rem" }}>{activeLightboxPhoto.sale.buyerEmail}</strong>
-                    </div>
-                  )}
+                  {activeLightboxPhoto.sale.buyerEmail &&
+                    !activeLightboxPhoto.sale.isComped && (
+                      <div>
+                        <span>
+                          {language === "es"
+                            ? "Email del comprador:"
+                            : "Buyer email:"}
+                        </span>
+                        <strong style={{ fontSize: "0.88rem" }}>
+                          {activeLightboxPhoto.sale.buyerEmail}
+                        </strong>
+                      </div>
+                    )}
                   <div>
-                    <span>{language === "es" ? "Álbum comercial:" : "Commercial album:"}</span>
+                    <span>
+                      {language === "es"
+                        ? "Álbum comercial:"
+                        : "Commercial album:"}
+                    </span>
                     <strong>{activeLightboxPhoto.sale.album}</strong>
                   </div>
 
                   <div>
-                    <span>{language === "es" ? "Fecha de Compra:" : "Purchase Date:"}</span>
+                    <span>
+                      {language === "es"
+                        ? "Fecha de Compra:"
+                        : "Purchase Date:"}
+                    </span>
                     <strong>
-                      {new Date(activeLightboxPhoto.sale.date).toLocaleDateString(language === "es" ? "es-AR" : "en-US", {
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric"
-                      })}
+                      {new Date(
+                        activeLightboxPhoto.sale.date,
+                      ).toLocaleDateString(
+                        language === "es" ? "es-AR" : "en-US",
+                        {
+                          day: "2-digit",
+                          month: "long",
+                          year: "numeric",
+                        },
+                      )}
                     </strong>
                   </div>
                   <div>
-                    <span>{language === "es" ? "Hora de Compra:" : "Purchase Time:"}</span>
-                    <strong style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>
+                      {language === "es" ? "Hora de Compra:" : "Purchase Time:"}
+                    </span>
+                    <strong
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
                       <Clock size={14} />
-                      {new Date(activeLightboxPhoto.sale.date).toLocaleTimeString(language === "es" ? "es-AR" : "en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      })}{language === "es" ? " hs" : ""}
+                      {new Date(
+                        activeLightboxPhoto.sale.date,
+                      ).toLocaleTimeString(
+                        language === "es" ? "es-AR" : "en-US",
+                        {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )}
+                      {language === "es" ? " hs" : ""}
                     </strong>
                   </div>
                   <div>
-                    <span>{language === "es" ? "Transacción:" : "Transaction:"}</span>
+                    <span>
+                      {language === "es" ? "Transacción:" : "Transaction:"}
+                    </span>
                     <strong>
                       {activeLightboxPhoto.sale.isComped ? (
-                        <span style={{ color: "var(--muted)" }}>{language === "es" ? "Bonificada (Cortesía)" : "Comped (Courtesy)"}</span>
+                        <span style={{ color: "var(--muted)" }}>
+                          {language === "es"
+                            ? "Bonificada (Cortesía)"
+                            : "Comped (Courtesy)"}
+                        </span>
                       ) : (
                         money.format(activeLightboxPhoto.sale.total)
                       )}
                     </strong>
                   </div>
                   <div>
-                    <span>{language === "es" ? "Fotógrafo asignado:" : "Assigned photographer:"}</span>
-                    <strong style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span className="profile-dot" style={{ background: activeLightboxPhoto.profileColor }} />
+                    <span>
+                      {language === "es"
+                        ? "Fotógrafo asignado:"
+                        : "Assigned photographer:"}
+                    </span>
+                    <strong
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        className="profile-dot"
+                        style={{ background: activeLightboxPhoto.profileColor }}
+                      />
                       {activeLightboxPhoto.profileName}
                     </strong>
                   </div>
                 </div>
                 {(!activeDirName || localSearchStatus !== "found") && (
-                  <div style={{ marginTop: "auto", paddingTop: "20px", display: "flex", gap: "12px" }}>
+                  <div
+                    style={{
+                      marginTop: "auto",
+                      paddingTop: "20px",
+                      display: "flex",
+                      gap: "12px",
+                    }}
+                  >
                     <a
-                      href={activeLightboxPhoto.url || activeLightboxPhoto.thumbnailUrl}
+                      href={
+                        activeLightboxPhoto.url ||
+                        activeLightboxPhoto.thumbnailUrl
+                      }
                       target="_blank"
                       rel="noreferrer"
                       className="text-button primary"
-                      style={{ flex: 1, textDecoration: "none", display: "inline-flex", justifyContent: "center", alignItems: "center", gap: "6px", fontSize: "0.85rem", height: "40px" }}
+                      style={{
+                        flex: 1,
+                        textDecoration: "none",
+                        display: "inline-flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "0.85rem",
+                        height: "40px",
+                      }}
                     >
                       <ExternalLink size={15} />
-                      {language === "es" ? "Ver original en alta" : "View high-res original"}
+                      {language === "es"
+                        ? "Ver original en alta"
+                        : "View high-res original"}
                     </a>
                   </div>
                 )}

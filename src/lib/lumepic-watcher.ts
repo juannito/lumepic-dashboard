@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
-import { getProfileConfigs } from "./lumepic-api";
+import { getProfileConfigs, getLumepicAuthHeaders, LUMEPIC_API_BASE_URL } from "./lumepic-api";
 import { parseImageFile } from "./image-size-parser";
 import { getDb } from "./db";
 
@@ -458,7 +458,7 @@ class LumepicWatcher {
 
       // Step 4: Call Lumepic batch-upload-url API
       const albumId = this.config.targetAlbumId;
-      const apiBase = process.env.LUMEPIC_API_BASE_URL || "https://api.lumepic.com";
+      const apiBase = LUMEPIC_API_BASE_URL;
       const uploadUrlRequest = `${apiBase}/photographs/batch-upload-url?albumId=${albumId}`;
 
       const payload = {
@@ -483,11 +483,9 @@ class LumepicWatcher {
       console.log(`[Watcher] Creating photograph record in Lumepic for: ${filename}`);
       const res = await fetch(uploadUrlRequest, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
+        headers: getLumepicAuthHeaders(token, {
           "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        }),
         body: JSON.stringify(payload),
       });
 

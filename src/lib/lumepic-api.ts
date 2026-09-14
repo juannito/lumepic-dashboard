@@ -14,7 +14,17 @@ import type {
   SalesPoint
 } from "./lumepic-types";
 
-const API_BASE_URL = process.env.LUMEPIC_API_BASE_URL || "https://api.lumepic.com";
+const DEFAULT_API_BASE_URL = "https://photographer.lumepic.com/api";
+
+// The photographer Bearer token only works against the photographer SPA API.
+// api.lumepic.com is the partner API (requires x-api-key), so remap it.
+function resolveApiBaseUrl(value: string | undefined) {
+  const base = value?.trim().replace(/\/+$/, "");
+  if (!base || /^https?:\/\/api\.lumepic\.com$/i.test(base)) return DEFAULT_API_BASE_URL;
+  return base;
+}
+
+export const LUMEPIC_API_BASE_URL = resolveApiBaseUrl(process.env.LUMEPIC_API_BASE_URL);
 const PROFILE_COLORS = ["#dceeb1", "#c5b0f4", "#efd4d4", "#c8e6cd", "#f3c9b6"];
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -136,6 +146,14 @@ function normalizeToken(token: string) {
   return token.replace(/^Bearer\s+/i, "").trim();
 }
 
+export function getLumepicAuthHeaders(token: string, extraHeaders: Record<string, string> = {}) {
+  return {
+    Authorization: `Bearer ${normalizeToken(token)}`,
+    Accept: "application/json",
+    ...extraHeaders
+  };
+}
+
 function slugify(value: string, fallback: string) {
   const slug = value
     .toLowerCase()
@@ -193,16 +211,28 @@ export async function lumepicFetch(path: string, token: string, bypassCache = fa
     if (cached && cached.expiresAt > Date.now()) return cached.value;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Authorization: `Bearer ${normalizeToken(token)}`,
-      Accept: "application/json"
-    },
+  const response = await fetch(`${LUMEPIC_API_BASE_URL}${path}`, {
+    headers: getLumepicAuthHeaders(token),
     cache: "no-store"
   });
 
   if (!response.ok) {
-    throw new Error(`${path} returned ${response.status}`);
+    const errorText = await response.text();
+    const parsedError = (() => {
+      try {
+        return JSON.parse(errorText) as { message?: string; error?: string };
+      } catch {
+        return null;
+      }
+    })();
+
+    const apiMessage = parsedError?.message || parsedError?.error || errorText.trim();
+    const helpText =
+      response.status === 401 || response.status === 403
+        ? " Revisa que LUMEPIC_PHOTOGRAPHER_TOKEN sea un token vigente del panel de fotógrafo."
+        : "";
+
+    throw new Error(`${path} returned ${response.status}${apiMessage ? `: ${apiMessage}` : ""}.${helpText}`);
   }
 
   const value = (await response.json()) as unknown;
@@ -210,6 +240,29 @@ export async function lumepicFetch(path: string, token: string, bypassCache = fa
     lumepicCache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   }
   return value;
+}
+
+export async function fetchAllAlbums(token: string, bypassCache = false): Promise<any[]> {
+  let allAlbums: any[] = [];
+  const limit = 50;
+  let skip = 0;
+  let hasMore = true;
+  let safetyCount = 0;
+
+  while (hasMore && safetyCount < 20) {
+    safetyCount++;
+    const path = `/albums?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=${skip}&order%5Bfield%5D=CREATED_AT&order%5Bsort%5D=DESC`;
+    const res = await lumepicFetch(path, token, bypassCache);
+    const albums = arrayFrom(res);
+    allAlbums = allAlbums.concat(albums);
+    
+    if (albums.length < limit) {
+      hasMore = false;
+    } else {
+      skip += limit;
+    }
+  }
+  return allAlbums;
 }
 
 function extractBuyerInfo(
@@ -532,7 +585,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const [salesRaw, albumsRaw, activityRaw, insightsRaw, publishedRaw, metricsRaw, profileRaw] =
       await Promise.all([
         lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token, bypassCache),
-        lumepicFetch("/albums?pagination%5Blimit%5D=20&pagination%5Bskip%5D=0&order%5Bfield%5D=CREATED_AT&order%5Bsort%5D=DESC", token, bypassCache),
+        fetchAllAlbums(token, bypassCache),
         lumepicFetch("/dashboard/photographer/sales-by-activity", token, bypassCache),
         lumepicFetch("/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=9&pagination%5Bskip%5D=0", token, bypassCache),
         lumepicFetch("/dashboard/photographer/published-albums", token, bypassCache),
