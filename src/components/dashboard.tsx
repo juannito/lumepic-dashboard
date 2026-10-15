@@ -3906,7 +3906,7 @@ function ProfileDashboard({
                 </option>
                 <option value="free">
                   {language === "es"
-                    ? `Sólo gratuitas (${freeSalesCount})`
+                    ? `Sólo Free (${freeSalesCount})`
                     : `Free only (${freeSalesCount})`}
                 </option>
               </select>
@@ -6923,7 +6923,7 @@ function GalleryDashboard({
                 </option>
                 <option value="comped">
                   {language === "es"
-                    ? `Sólo gratuitas (${freeOrderCount})`
+                    ? `Sólo Free (${freeOrderCount})`
                     : `Free only (${freeOrderCount})`}
                 </option>
               </select>
