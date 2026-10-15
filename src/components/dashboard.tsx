@@ -17732,8 +17732,11 @@ export function Dashboard() {
                   ? `¡Nueva venta para ${profileLabel}!`
                   : `New sale for ${profileLabel}!`;
 
+              const orderLine =
+                language === "es" ? `Orden: ${sale.id}` : `Order: ${sale.id}`;
+
               new Notification(title, {
-                body: bodyText,
+                body: `${bodyText}\n${orderLine}`,
                 icon: "/favicon.ico",
               });
             } catch (e) {
