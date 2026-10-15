@@ -12,6 +12,113 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+// Photographs that appear in any approved sale. Cached briefly so the per-photo
+// delete guard doesn't re-scan every sale; the cleaner forces a refresh right
+// before a bulk delete.
+const SOLD_CACHE_TTL_MS = 5 * 60 * 1000;
+export type SoldPhoto = {
+  id: string;
+  originalFileName: string;
+  albumId: string;
+  url: string;
+  thumbnailUrl: string;
+  saleIds: string[];
+};
+type SoldSnapshot = {
+  ids: Set<string>;
+  photos: Map<string, SoldPhoto>;
+  salesScanned: number;
+  fetchedAt: number;
+};
+let soldCache: SoldSnapshot | null = null;
+let soldInflight: Promise<SoldSnapshot> | null = null;
+
+async function scanSoldPhotographs(): Promise<SoldSnapshot> {
+  const ids = new Set<string>();
+  const photos = new Map<string, SoldPhoto>();
+  let salesScanned = 0;
+  for (const profile of getProfileConfigs()) {
+    if (!profile.token) continue;
+    const sales: any[] = [];
+    for (let skip = 0; ; skip += 100) {
+      const page = readArray(
+        await lumepicFetch(
+          `/sales?pagination%5Blimit%5D=100&pagination%5Bskip%5D=${skip}&status=approved`,
+          profile.token,
+          true,
+        ),
+      );
+      sales.push(...page);
+      if (page.length < 100) break;
+    }
+    salesScanned += sales.length;
+
+    const CONCURRENCY = 8;
+    for (let i = 0; i < sales.length; i += CONCURRENCY) {
+      await Promise.all(
+        sales.slice(i, i + CONCURRENCY).map(async (sale) => {
+          if (!sale?.id) return;
+          for (let skip = 0; ; skip += 100) {
+            const detail: any = await lumepicFetch(
+              `/sales/${sale.id}/photographs?pagination[limit]=100&pagination[skip]=${skip}`,
+              profile.token,
+              true,
+            );
+            const rows = [
+              ...(detail?.eventPhotographs || []),
+              ...(detail?.albumPhotographs || []),
+              ...(detail?.photographs || []),
+              ...(detail?.items || []),
+            ];
+            rows.forEach((row: any) => {
+              const photo = row?.photograph || row;
+              const id = photo?.id ? String(photo.id) : "";
+              if (!id) return;
+              ids.add(id);
+              const existing = photos.get(id);
+              if (existing) {
+                if (!existing.saleIds.includes(sale.id)) existing.saleIds.push(sale.id);
+                return;
+              }
+              photos.set(id, {
+                id,
+                originalFileName: String(photo.originalFileName || ""),
+                albumId: String(photo.albumId || ""),
+                url: String(photo.url || ""),
+                thumbnailUrl: String(photo.thumbnailUrl || ""),
+                saleIds: [String(sale.id)],
+              });
+            });
+            if (rows.length < 100) break;
+          }
+        }),
+      );
+    }
+  }
+  return { ids, photos, salesScanned, fetchedAt: Date.now() };
+}
+
+async function getSoldPhotographs(forceRefresh = false): Promise<SoldSnapshot> {
+  if (
+    !forceRefresh &&
+    soldCache &&
+    Date.now() - soldCache.fetchedAt < SOLD_CACHE_TTL_MS
+  ) {
+    return soldCache;
+  }
+  if (!soldInflight) {
+    soldInflight = scanSoldPhotographs()
+      .then((result) => {
+        soldCache = result;
+        return result;
+      })
+      .finally(() => {
+        soldInflight = null;
+      });
+  }
+  return soldInflight;
+}
+
 function readArray(value: any): any[] {
   if (Array.isArray(value)) return value;
   if (!value || typeof value !== "object") return [];
@@ -90,6 +197,71 @@ async function selectLocalFolderPath(): Promise<string | null> {
       return null;
     throw error;
   }
+}
+
+// The browser never exposes where a download was saved, so find the file by
+// name (Spotlight first, then the usual folders) and reveal the newest match.
+async function revealFileInFinder(fileName: string): Promise<boolean> {
+  if (process.platform !== "darwin") {
+    throw new Error("Reveal in Finder is only supported on macOS.");
+  }
+  const fs = await import("fs/promises");
+  const path = await import("path");
+  const os = await import("os");
+  const candidates = new Set<string>();
+
+  try {
+    const { stdout } = await execFileAsync(
+      "mdfind",
+      [`kMDItemFSName == "${fileName.replace(/"/g, '\\"')}"`],
+      { timeout: 10000 },
+    );
+    stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => candidates.add(line));
+  } catch {
+    // Spotlight unavailable; fall back to the folders below.
+  }
+
+  const home = os.homedir();
+  for (const dir of ["Downloads", "Desktop", "Documents"]) {
+    try {
+      const { stdout } = await execFileAsync(
+        "find",
+        [path.join(home, dir), "-maxdepth", "4", "-type", "f", "-name", fileName],
+        { timeout: 15000 },
+      );
+      stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => candidates.add(line));
+    } catch (error: any) {
+      // find exits non-zero on unreadable subfolders but still prints matches.
+      String(error?.stdout || "")
+        .split("\n")
+        .map((line: string) => line.trim())
+        .filter(Boolean)
+        .forEach((line: string) => candidates.add(line));
+    }
+  }
+
+  let newest: { file: string; mtime: number } | null = null;
+  for (const file of Array.from(candidates)) {
+    try {
+      const stat = await fs.stat(file);
+      if (!newest || stat.mtimeMs > newest.mtime) {
+        newest = { file, mtime: stat.mtimeMs };
+      }
+    } catch {
+      // Gone since it was indexed.
+    }
+  }
+  if (!newest) return false;
+  await execFileAsync("open", ["-R", newest.file], { timeout: 10000 });
+  return true;
 }
 
 async function getWatcherDashboardData(config: any, bypassCache = false) {
@@ -344,10 +516,12 @@ export default async function handler(
 
         let allPhotographs: any[] = [];
         let skip = 0;
-        const limit = 100;
+        const limit = 1000;
         let hasMore = true;
         let attempts = 0;
-        const maxAttempts = 100;
+        // Safety net only: 500 pages × 1000 = 500k photos.
+        const maxAttempts = 500;
+        let remoteTotal = 0;
 
         try {
           while (hasMore && attempts < maxAttempts) {
@@ -365,6 +539,7 @@ export default async function handler(
             const data = (await fetchRes.json()) as any;
             const items = data.items || [];
             allPhotographs.push(...items);
+            remoteTotal = Number(data.count || 0);
 
             if (
               items.length < limit ||
@@ -376,10 +551,18 @@ export default async function handler(
             }
           }
 
+          const seen = new Set<string>();
+          allPhotographs = allPhotographs.filter((photo) => {
+            if (!photo?.id || seen.has(photo.id)) return false;
+            seen.add(photo.id);
+            return true;
+          });
+
           res.status(200).json({
             success: true,
             photographs: allPhotographs,
             count: allPhotographs.length,
+            total: remoteTotal || allPhotographs.length,
           });
         } catch (err: any) {
           console.error("Error listing album photographs:", err);
@@ -390,10 +573,73 @@ export default async function handler(
         return;
       }
 
+      if (action === "reveal-file") {
+        const fileName = String(payload.fileName || "").trim();
+        if (!/^[^/\\]+\.zip$/i.test(fileName)) {
+          res.status(400).json({ error: "Invalid file name" });
+          return;
+        }
+        try {
+          const found = await revealFileInFinder(fileName);
+          if (!found) {
+            res.status(404).json({ error: "File not found" });
+            return;
+          }
+          res.status(200).json({ success: true });
+        } catch (err: any) {
+          res.status(500).json({ error: err.message || "Reveal failed" });
+        }
+        return;
+      }
+
+      if (action === "list-sold-photographs") {
+        try {
+          const sold = await getSoldPhotographs(Boolean(payload.refresh));
+          const albumFilter = Array.isArray(payload.albumIds)
+            ? new Set<string>(payload.albumIds.map(String))
+            : null;
+          res.status(200).json({
+            soldIds: Array.from(sold.ids),
+            ...(payload.includePhotos
+              ? {
+                  photos: Array.from(sold.photos.values()).filter(
+                    (photo) => !albumFilter || albumFilter.has(photo.albumId),
+                  ),
+                }
+              : {}),
+            salesScanned: sold.salesScanned,
+            fetchedAt: new Date(sold.fetchedAt).toISOString(),
+          });
+        } catch (err: any) {
+          console.error("Error listing sold photographs:", err);
+          res
+            .status(500)
+            .json({ error: err.message || "Failed to list sold photographs" });
+        }
+        return;
+      }
+
       if (action === "delete-photograph") {
         const photographId = String(payload.photographId || "").trim();
         if (!photographId) {
           res.status(400).json({ error: "Missing photographId" });
+          return;
+        }
+
+        // Never delete a photo someone bought. If sales can't be checked, refuse.
+        try {
+          const sold = await getSoldPhotographs();
+          if (sold.ids.has(photographId)) {
+            res.status(409).json({
+              error: "Photograph was sold; refusing to delete",
+              sold: true,
+            });
+            return;
+          }
+        } catch (err: any) {
+          res.status(503).json({
+            error: `Could not verify sales before deleting: ${err.message || err}`,
+          });
           return;
         }
 

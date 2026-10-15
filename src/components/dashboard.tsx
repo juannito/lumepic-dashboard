@@ -41,6 +41,7 @@ import {
   ArrowLeft,
   Edit3,
 } from "lucide-react";
+import { makeZip } from "client-zip";
 import {
   Area,
   AreaChart,
@@ -208,6 +209,62 @@ function setLocalDirectoryHandleForEvent(
   });
 }
 
+function getStoredDirectoryHandle(
+  key: string,
+): Promise<FileSystemDirectoryHandle | null> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !("indexedDB" in window)) {
+      resolve(null);
+      return;
+    }
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(STORE_NAME);
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const transaction = db.transaction(STORE_NAME, "readonly");
+        const getReq = transaction.objectStore(STORE_NAME).get(key);
+        getReq.onsuccess = () => resolve(getReq.result || null);
+        getReq.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    };
+    request.onerror = () => resolve(null);
+  });
+}
+
+function setStoredDirectoryHandle(
+  key: string,
+  handle: FileSystemDirectoryHandle | null,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !("indexedDB" in window)) {
+      resolve(false);
+      return;
+    }
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(STORE_NAME);
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const transaction = db.transaction(STORE_NAME, "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        const putReq = handle ? store.put(handle, key) : store.delete(key);
+        putReq.onsuccess = () => resolve(true);
+        putReq.onerror = () => resolve(false);
+      } catch {
+        resolve(false);
+      }
+    };
+    request.onerror = () => resolve(false);
+  });
+}
+
 function getLocalDirectoryHandleForSubEvent(
   eventId: string,
   subEventId: string,
@@ -314,6 +371,38 @@ async function findLocalPhotoHandle(
     }
   }
   return null;
+}
+
+// Walk the folder once and index files by lowercase name (first match wins).
+async function buildLocalPhotoIndex(
+  dirHandle: FileSystemDirectoryHandle,
+): Promise<Map<string, FileSystemFileHandle>> {
+  const index = new Map<string, FileSystemFileHandle>();
+  const queue: FileSystemDirectoryHandle[] = [dirHandle];
+  while (queue.length > 0) {
+    const currentDir = queue.shift()!;
+    try {
+      for await (const entry of (currentDir as any).values()) {
+        if (entry.kind === "file") {
+          const key = entry.name.toLowerCase().trim();
+          if (!index.has(key)) index.set(key, entry);
+        } else if (entry.kind === "directory") {
+          queue.push(entry);
+        }
+      }
+    } catch (e) {
+      console.error("Error reading directory entry:", e);
+    }
+  }
+  return index;
+}
+
+// "Santa Mónica Classic 2026" -> "SantaMonicaClassic2026"
+function compactFileNamePart(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "");
 }
 
 const money = new Intl.NumberFormat("es-AR", {
@@ -2374,6 +2463,7 @@ function ConsolidatedDashboard({
         } else if (targetAlbumTitle) {
           isMatch = isAlbumMatch(sale.album, targetAlbumTitle);
         }
+        if (!isMatch) return;
 
         const { key, label } = getGroupingKeyAndLabel(
           saleDate,
@@ -3104,10 +3194,19 @@ function ConsolidatedDashboard({
                   <th>{t.date}</th>
                   <th>{t.tableGross}</th>
                   <th>{t.tableNet}</th>
-                  <th>{t.sales}</th>
-                  <th>{t.publishedPhotos}</th>
-                  <th>{t.photosSold}</th>
-                  <th>{t.ratio}</th>
+                  <th>ORDERS</th>
+                  <th>PUBLISHED</th>
+                  <th>SALES</th>
+                  <th>RATIO</th>
+                  <th
+                    title={
+                      language === "es"
+                        ? "Neto por foto publicada"
+                        : "Net revenue per published photo"
+                    }
+                  >
+                    ROI
+                  </th>
                   <th>{t.views}</th>
                 </tr>
               </thead>
@@ -3126,21 +3225,26 @@ function ConsolidatedDashboard({
                     <td data-label={t.tableNet}>
                       {money.format(album.netRevenue)}
                     </td>
-                    <td data-label={t.sales}>{album.sales}</td>
-                    <td data-label={t.publishedPhotos}>
+                    <td data-label="ORDERS">{album.sales}</td>
+                    <td data-label="PUBLISHED">
                       {compact.format(album.photos)}
                     </td>
-                    <td data-label={t.photosSold}>
+                    <td data-label="SALES">
                       {compact.format(album.soldPhotos)}
                     </td>
-                    <td data-label={t.ratio}>{album.conversion.toFixed(1)}%</td>
+                    <td data-label="RATIO">{album.conversion.toFixed(1)}%</td>
+                    <td data-label="ROI">
+                      {album.photos > 0
+                        ? money.format(album.netRevenue / album.photos)
+                        : "—"}
+                    </td>
                     <td data-label={t.views}>{compact.format(album.views)}</td>
                   </tr>
                 ))}
                 {consolidatedAlbums.length === 0 && (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       style={{
                         textAlign: "center",
                         color: "var(--muted)",
@@ -5576,6 +5680,12 @@ interface GalleryPhotoItem {
 
 interface GalleryPhotoCardProps {
   item: GalleryPhotoItem;
+  // When the card represents an order with several photos
+  orderNav?: {
+    index: number;
+    photos: GalleryPhotoItem[];
+    onSelect: (index: number) => void;
+  };
   customEvents: CustomEvent[];
   globalDirHandle: FileSystemDirectoryHandle | null;
   albumMap: Record<string, AlbumInsight>;
@@ -5612,6 +5722,7 @@ function GalleryPhotoCard({
   setResolvedLocalUrls,
   setVisiblePhotoKeys,
   permissionRetry,
+  orderNav,
 }: GalleryPhotoCardProps) {
   const [localUrl, setLocalUrl] = useState<string | null>(null);
   const [localSearchStatus, setLocalSearchStatus] = useState<
@@ -5628,6 +5739,11 @@ function GalleryPhotoCard({
 
   const cacheKey = `${item.id}_${item.sale.id}`;
   const cachedUrl = resolvedLocalUrls[cacheKey];
+
+  // Switching photos inside an order must not keep the previous local image
+  useEffect(() => {
+    setLocalUrl(null);
+  }, [cacheKey]);
 
   // Intersection observer to track visibility
   useEffect(() => {
@@ -5860,7 +5976,55 @@ function GalleryPhotoCard({
           </span>
         )}
         {isComped && <span className="buyer-badge is-comped">Lumepic</span>}
+        {orderNav && (
+          <>
+            <button
+              type="button"
+              className="order-nav-btn is-prev"
+              onClick={(e) => {
+                e.stopPropagation();
+                orderNav.onSelect(orderNav.index - 1);
+              }}
+              aria-label={language === "es" ? "Foto anterior" : "Previous photo"}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              type="button"
+              className="order-nav-btn is-next"
+              onClick={(e) => {
+                e.stopPropagation();
+                orderNav.onSelect(orderNav.index + 1);
+              }}
+              aria-label={language === "es" ? "Foto siguiente" : "Next photo"}
+            >
+              <ChevronRight size={16} />
+            </button>
+            <span className="order-nav-count">
+              {orderNav.index + 1}/{orderNav.photos.length}
+            </span>
+          </>
+        )}
       </div>
+      {orderNav && (
+        <div className="order-thumb-strip" onClick={(e) => e.stopPropagation()}>
+          {orderNav.photos.map((photo, i) => (
+            <button
+              key={`${photo.id}-${i}`}
+              type="button"
+              className={`order-thumb${i === orderNav.index ? " is-active" : ""}`}
+              onClick={() => orderNav.onSelect(i)}
+              title={photo.originalFileName}
+            >
+              <img
+                src={photo.thumbnailUrl || photo.url}
+                alt={photo.originalFileName}
+                loading="lazy"
+              />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="photo-card-info">
         <div className="file-name-row">
@@ -6057,7 +6221,24 @@ function GalleryDashboard({
   const [selectedProfile, setSelectedProfile] = useState("all");
   const [purchaseType, setPurchaseType] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
+  const [selectedRace, setSelectedRace] = useState("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [archiveProgress, setArchiveProgress] = useState<{
+    phase: "listing" | "indexing" | "zipping";
+    done: number;
+    total: number;
+  } | null>(null);
+  const [revealStatus, setRevealStatus] = useState<
+    "idle" | "searching" | "not-found" | "error"
+  >("idle");
+  const [archiveResult, setArchiveResult] = useState<{
+    fileName: string;
+    added: number;
+    previews: number;
+    missing: string[];
+    note?: string;
+    error?: string;
+  } | null>(null);
 
   // Pagination states
   const [visibleCount, setVisibleCount] = useState(10);
@@ -6103,6 +6284,50 @@ function GalleryDashboard({
     return map;
   }, [profiles]);
 
+  // Races = custom events (grouping albums) plus any sold album outside them.
+  const raceOptions = useMemo(() => {
+    const soldAlbumIds = new Set(allPhotos.map((p) => p.albumId).filter(Boolean));
+    const options: {
+      value: string;
+      label: string;
+      albumIds: string[];
+      eventId?: string;
+      photoCount: number;
+    }[] = [];
+    const countFor = (albumIds: string[]) =>
+      allPhotos.filter((p) => albumIds.includes(p.albumId)).length;
+    const covered = new Set<string>();
+    customEvents.forEach((event) => {
+      const ids = event.albumIds.filter((id) => soldAlbumIds.has(id));
+      if (ids.length === 0) return;
+      ids.forEach((id) => covered.add(id));
+      options.push({
+        value: `event:${event.id}`,
+        label: event.name.trim(),
+        albumIds: event.albumIds,
+        eventId: event.id,
+        photoCount: countFor(event.albumIds),
+      });
+    });
+    soldAlbumIds.forEach((albumId) => {
+      if (covered.has(albumId)) return;
+      const title =
+        albumMap[albumId]?.title ||
+        allPhotos.find((p) => p.albumId === albumId)?.sale.album ||
+        albumId;
+      options.push({
+        value: `album:${albumId}`,
+        label: title.trim(),
+        albumIds: [albumId],
+        photoCount: countFor([albumId]),
+      });
+    });
+    return options.sort((a, b) => a.label.localeCompare(b.label));
+  }, [allPhotos, customEvents, albumMap]);
+
+  const activeRace =
+    raceOptions.find((option) => option.value === selectedRace) || null;
+
   const handleCopyFileName = (
     fileName: string,
     photoId: string,
@@ -6140,6 +6365,12 @@ function GalleryDashboard({
       result = result.filter((item) => item.profileId === selectedProfile);
     }
 
+    // Filter by race
+    if (activeRace) {
+      const raceAlbumIds = new Set(activeRace.albumIds);
+      result = result.filter((item) => raceAlbumIds.has(item.albumId));
+    }
+
     // Filter by purchase type
     if (purchaseType === "comped") {
       result = result.filter((item) => item.sale.isComped);
@@ -6165,9 +6396,59 @@ function GalleryDashboard({
     }
 
     return result;
-  }, [allPhotos, searchQuery, selectedProfile, purchaseType, sortOrder]);
+  }, [
+    allPhotos,
+    searchQuery,
+    selectedProfile,
+    purchaseType,
+    sortOrder,
+    activeRace,
+  ]);
 
-  const photoCountLabel = useMemo(() => {
+  // One entry per order (sale), keeping the order of the sorted photo list
+  const orders = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; sale: Sale; items: GalleryPhotoItem[] }
+    >();
+    filteredPhotos.forEach((item) => {
+      const key = `${item.profileId}:${item.sale.id}`;
+      let order = map.get(key);
+      if (!order) {
+        order = { key, sale: item.sale, items: [] };
+        map.set(key, order);
+      }
+      order.items.push(item);
+    });
+    return Array.from(map.values());
+  }, [filteredPhotos]);
+
+  // Flattened by order so the lightbox moves to the next order after the last photo
+  const orderedPhotos = useMemo(
+    () => orders.flatMap((order) => order.items),
+    [orders],
+  );
+
+  const [orderPhotoIndex, setOrderPhotoIndex] = useState<
+    Record<string, number>
+  >({});
+
+  // Keep the card carousel in sync with the photo shown in the lightbox
+  useEffect(() => {
+    if (!activeLightboxPhoto) return;
+    const key = `${activeLightboxPhoto.profileId}:${activeLightboxPhoto.sale.id}`;
+    const order = orders.find((o) => o.key === key);
+    const index = order
+      ? order.items.findIndex((p) => p.id === activeLightboxPhoto.id)
+      : -1;
+    if (index >= 0) {
+      setOrderPhotoIndex((prev) =>
+        prev[key] === index ? prev : { ...prev, [key]: index },
+      );
+    }
+  }, [activeLightboxPhoto, orders]);
+
+  const photoCountText = useMemo(() => {
     const total = allPhotos.length;
     const filtered = filteredPhotos.length;
     if (total === filtered) {
@@ -6186,17 +6467,277 @@ function GalleryDashboard({
       : `Showing ${filtered} of ${total} photos`;
   }, [allPhotos, filteredPhotos, language]);
 
+  const photoCountLabel = `${orders.length} ${
+    language === "es"
+      ? orders.length === 1
+        ? "orden"
+        : "órdenes"
+      : orders.length === 1
+        ? "order"
+        : "orders"
+  } · ${photoCountText}`;
+
   // Reset pagination when filters or items change
   useEffect(() => {
     setVisibleCount(10);
-  }, [searchQuery, selectedProfile, purchaseType, sortOrder]);
+  }, [searchQuery, selectedProfile, purchaseType, sortOrder, selectedRace]);
+
+  const handleRevealArchive = async (fileName: string) => {
+    setRevealStatus("searching");
+    try {
+      const res = await fetch("/api/lumepic/watcher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reveal-file", fileName }),
+      });
+      setRevealStatus(
+        res.ok ? "idle" : res.status === 404 ? "not-found" : "error",
+      );
+    } catch {
+      setRevealStatus("error");
+    }
+  };
+
+  // Downloads every photo sold in the selected race into one ZIP. The list
+  // comes from a full scan of sales (the gallery only has the first photos of
+  // each order). Originals come from the linked local folders; anything not
+  // found there falls back to the Lumepic web preview (480px, the API does not
+  // expose originals), stored under previews/. A CSV manifest is added.
+  const handleArchiveRace = async () => {
+    if (!activeRace || archiveProgress) return;
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fileName = `${compactFileNamePart(activeRace.label) || "Lumepic"}_${
+      language === "es" ? "vendidas" : "sold"
+    }_${stamp}.zip`;
+    const fail = (error: string) =>
+      setArchiveResult({ fileName, added: 0, previews: 0, missing: [], error });
+    setArchiveResult(null);
+    setRevealStatus("idle");
+
+    // Open the save dialog first, while the click gesture is still active.
+    let writable: any = null;
+    let fallbackReason = "";
+    const savePicker = (window as any).showSaveFilePicker;
+    const isIframe = window.self !== window.top;
+    if (savePicker && !isIframe) {
+      try {
+        const fileHandle = await savePicker({
+          suggestedName: fileName,
+          types: [
+            { description: "ZIP", accept: { "application/zip": [".zip"] } },
+          ],
+        });
+        writable = await fileHandle.createWritable();
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        fallbackReason = e?.message || String(e);
+      }
+    } else {
+      fallbackReason = isIframe
+        ? "iframe"
+        : language === "es"
+          ? "el navegador no permite elegir carpeta"
+          : "browser cannot pick a folder";
+    }
+
+    try {
+      // Local originals: album folder first, then the event folder, then the
+      // global one. Permission is checked before the slow sales scan so the
+      // browser prompt still counts as part of the click.
+      const dirHandles: FileSystemDirectoryHandle[] = [];
+      for (const albumId of activeRace.albumIds) {
+        const handle = await getStoredDirectoryHandle(`album-dir-${albumId}`);
+        if (handle) dirHandles.push(handle);
+      }
+      if (activeRace.eventId) {
+        const handle = await getLocalDirectoryHandleForEvent(activeRace.eventId);
+        if (handle) dirHandles.push(handle);
+      }
+      if (localDirHandle) dirHandles.push(localDirHandle);
+      const readableHandles: FileSystemDirectoryHandle[] = [];
+      for (const handle of dirHandles) {
+        if (await verifyDirectoryPermission(handle, true)) {
+          readableHandles.push(handle);
+        }
+      }
+      setArchiveProgress({ phase: "listing", done: 0, total: 0 });
+      const res = await fetch("/api/lumepic/watcher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "list-sold-photographs",
+          refresh: true,
+          includePhotos: true,
+          albumIds: activeRace.albumIds,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const soldPhotos: {
+        id: string;
+        originalFileName: string;
+        albumId: string;
+        saleIds: string[];
+      }[] = data.photos || [];
+      if (soldPhotos.length === 0) {
+        if (writable) await writable.abort();
+        fail(
+          language === "es"
+            ? "No hay fotos vendidas en esta carrera."
+            : "No sold photos in this race.",
+        );
+        return;
+      }
+
+      setArchiveProgress({ phase: "indexing", done: 0, total: soldPhotos.length });
+      const localIndex = new Map<string, FileSystemFileHandle>();
+      for (const handle of readableHandles) {
+        const index = await buildLocalPhotoIndex(handle);
+        index.forEach((value, key) => {
+          if (!localIndex.has(key)) localIndex.set(key, value);
+        });
+      }
+
+      const saleById = new Map<string, Sale>();
+      allPhotos.forEach((item) => saleById.set(item.sale.id, item.sale));
+
+      let added = 0;
+      let previews = 0;
+      const missing: string[] = [];
+      const manifest: string[][] = [
+        ["file", "photoId", "albumId", "saleIds", "buyers", "saleDates", "source"],
+      ];
+      const usedNames = new Set<string>();
+      const uniqueName = (raw: string) => {
+        let name = raw;
+        for (let n = 2; usedNames.has(name.toLowerCase()); n += 1) {
+          const dot = raw.lastIndexOf(".");
+          name =
+            dot > 0
+              ? `${raw.slice(0, dot)} (${n})${raw.slice(dot)}`
+              : `${raw} (${n})`;
+        }
+        usedNames.add(name.toLowerCase());
+        return name;
+      };
+      const csvCell = (value: string) =>
+        /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+
+      setArchiveProgress({ phase: "zipping", done: 0, total: soldPhotos.length });
+      async function* entries() {
+        let done = 0;
+        for (const photo of soldPhotos) {
+          const baseName = photo.originalFileName || `${photo.id}.jpg`;
+          const local = photo.originalFileName
+            ? localIndex.get(photo.originalFileName.toLowerCase().trim())
+            : undefined;
+          let input: Blob | null = null;
+          let lastModified: Date | undefined;
+          let source = "";
+          if (local) {
+            try {
+              const file = await local.getFile();
+              input = file;
+              lastModified = new Date(file.lastModified);
+              source = "local original";
+            } catch {
+              input = null;
+            }
+          }
+          if (!input) {
+            try {
+              const res = await fetch(
+                `/api/lumepic/photo-file?id=${encodeURIComponent(photo.id)}`,
+              );
+              if (res.ok) {
+                input = await res.blob();
+                source = "lumepic preview";
+              }
+            } catch {
+              input = null;
+            }
+          }
+          done += 1;
+          setArchiveProgress({
+            phase: "zipping",
+            done,
+            total: soldPhotos.length,
+          });
+          const sales = photo.saleIds.map((id) => saleById.get(id));
+          manifest.push([
+            baseName,
+            photo.id,
+            photo.albumId,
+            photo.saleIds.join(" "),
+            sales.map((sale) => sale?.buyer || "").filter(Boolean).join(" | "),
+            sales.map((sale) => sale?.date || "").filter(Boolean).join(" "),
+            source || "missing",
+          ]);
+          if (!input) {
+            missing.push(baseName);
+            continue;
+          }
+          added += 1;
+          if (source === "lumepic preview") previews += 1;
+          yield {
+            name: uniqueName(
+              source === "lumepic preview" ? `previews/${baseName}` : baseName,
+            ),
+            lastModified,
+            input,
+          };
+        }
+        yield {
+          name: "manifest.csv",
+          input: manifest.map((row) => row.map(csvCell).join(",")).join("\n"),
+        };
+      }
+
+      const stream = makeZip(entries());
+      if (writable) {
+        await stream.pipeTo(writable);
+      } else {
+        const blob = await new Response(stream).blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
+
+      setArchiveResult({
+        fileName,
+        added,
+        previews,
+        missing,
+        note: writable
+          ? undefined
+          : language === "es"
+            ? `Se descargó en la carpeta de Descargas del navegador (${fallbackReason}).`
+            : `Saved to the browser Downloads folder (${fallbackReason}).`,
+      });
+    } catch (err) {
+      console.error("Sold archive failed:", err);
+      try {
+        if (writable) await writable.abort();
+      } catch {
+        // already closed
+      }
+      fail(err instanceof Error ? err.message : String(err));
+    } finally {
+      setArchiveProgress(null);
+    }
+  };
 
   // Infinite scroll observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && visibleCount < filteredPhotos.length) {
-          setVisibleCount((prev) => Math.min(prev + 10, filteredPhotos.length));
+        if (entries[0].isIntersecting && visibleCount < orders.length) {
+          setVisibleCount((prev) => Math.min(prev + 10, orders.length));
         }
       },
       { rootMargin: "300px" }, // Load early before reaching the screen bottom
@@ -6212,11 +6753,11 @@ function GalleryDashboard({
         observer.unobserve(currentSentinel);
       }
     };
-  }, [filteredPhotos.length, visibleCount]);
+  }, [orders.length, visibleCount]);
 
-  const visiblePhotos = useMemo(() => {
-    return filteredPhotos.slice(0, visibleCount);
-  }, [filteredPhotos, visibleCount]);
+  const visibleOrders = useMemo(() => {
+    return orders.slice(0, visibleCount);
+  }, [orders, visibleCount]);
 
   return (
     <>
@@ -6285,6 +6826,29 @@ function GalleryDashboard({
               </div>
             )}
 
+            {/* Race Filter */}
+            {raceOptions.length > 0 && (
+              <div className="filter-select-wrap">
+                <Calendar size={14} className="select-icon" />
+                <select
+                  value={selectedRace}
+                  onChange={(e) => {
+                    setSelectedRace(e.target.value);
+                    setArchiveResult(null);
+                  }}
+                >
+                  <option value="all">
+                    {language === "es" ? "Todas las carreras" : "All races"}
+                  </option>
+                  {raceOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label} ({option.photoCount})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Purchase Type Filter */}
             <div className="filter-select-wrap">
               <BadgeDollarSign size={14} className="select-icon" />
@@ -6342,6 +6906,38 @@ function GalleryDashboard({
             }}
           >
             <span>{photoCountLabel}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {activeRace && (
+              <button
+                className="text-button"
+                onClick={() => void handleArchiveRace()}
+                disabled={Boolean(archiveProgress)}
+                title={
+                  language === "es"
+                    ? "Descarga en un ZIP todas las fotos vendidas de esta carrera, con un manifest.csv"
+                    : "Download every sold photo of this race as a ZIP, with a manifest.csv"
+                }
+              >
+                {archiveProgress ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                {archiveProgress
+                  ? archiveProgress.phase === "listing"
+                    ? language === "es"
+                      ? "Buscando ventas..."
+                      : "Loading sales..."
+                    : archiveProgress.phase === "indexing"
+                      ? language === "es"
+                        ? "Leyendo carpeta local..."
+                        : "Reading local folder..."
+                      : `${archiveProgress.done} / ${archiveProgress.total}`
+                  : language === "es"
+                    ? "Descargar vendidas (ZIP)"
+                    : "Download sold (ZIP)"}
+              </button>
+            )}
             {allPhotos.length > 0 &&
               allPhotos.length > filteredPhotos.length && (
                 <button
@@ -6350,6 +6946,7 @@ function GalleryDashboard({
                     setSelectedProfile("all");
                     setPurchaseType("all");
                     setSortOrder("recent");
+                    setSelectedRace("all");
                   }}
                   className="text-link-btn"
                   style={{
@@ -6365,7 +6962,90 @@ function GalleryDashboard({
                   {language === "es" ? "Restablecer filtros" : "Reset filters"}
                 </button>
               )}
+            </div>
           </div>
+          {archiveResult && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: "8px",
+                fontSize: "0.8rem",
+                border: `1px solid ${archiveResult.error ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+                background: archiveResult.error
+                  ? "rgba(239, 68, 68, 0.08)"
+                  : "rgba(16, 185, 129, 0.08)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
+              {archiveResult.error ? (
+                <strong style={{ color: "var(--danger, #ef4444)" }}>
+                  {archiveResult.error}
+                </strong>
+              ) : (
+                <strong>
+                  {language === "es"
+                    ? `${archiveResult.fileName}: ${archiveResult.added} fotos (${archiveResult.added - archiveResult.previews} originales locales, ${archiveResult.previews} previews de Lumepic).`
+                    : `${archiveResult.fileName}: ${archiveResult.added} photos (${archiveResult.added - archiveResult.previews} local originals, ${archiveResult.previews} Lumepic previews).`}
+                </strong>
+              )}
+              {!archiveResult.error && (
+                <span>
+                  <button
+                    onClick={() => void handleRevealArchive(archiveResult.fileName)}
+                    disabled={revealStatus === "searching"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "var(--ink)",
+                      fontWeight: 600,
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <FolderOpen size={13} />
+                    {revealStatus === "searching"
+                      ? language === "es"
+                        ? "Buscando..."
+                        : "Searching..."
+                      : language === "es"
+                        ? "Mostrar en Finder"
+                        : "Reveal in Finder"}
+                  </button>
+                  {revealStatus === "not-found" && (
+                    <span style={{ color: "var(--muted)", marginLeft: "8px" }}>
+                      {language === "es"
+                        ? "No encontré el archivo (puede tardar unos segundos en indexarse)."
+                        : "File not found (it may take a few seconds to be indexed)."}
+                    </span>
+                  )}
+                  {revealStatus === "error" && (
+                    <span style={{ color: "var(--danger, #ef4444)", marginLeft: "8px" }}>
+                      {language === "es"
+                        ? "No se pudo abrir Finder."
+                        : "Could not open Finder."}
+                    </span>
+                  )}
+                </span>
+              )}
+              {archiveResult.missing.length > 0 && (
+                <span style={{ color: "var(--danger, #ef4444)" }}>
+                  {language === "es"
+                    ? `No se pudieron obtener ${archiveResult.missing.length} (figuran en manifest.csv): `
+                    : `Could not get ${archiveResult.missing.length} (listed in manifest.csv): `}
+                  {archiveResult.missing.join(", ")}
+                </span>
+              )}
+              {archiveResult.note && (
+                <span style={{ color: "var(--muted)" }}>{archiveResult.note}</span>
+              )}
+            </div>
+          )}
         </header>
       </section>
 
@@ -6413,19 +7093,26 @@ function GalleryDashboard({
         </section>
       ) : (
         <section className="gallery-grid">
-          {visiblePhotos.map((item, idx) => {
-            const cardKey = `${item.sale.id}-${item.id}-${idx}`;
+          {visibleOrders.map((order) => {
+            const count = order.items.length;
+            const index = Math.min(orderPhotoIndex[order.key] ?? 0, count - 1);
+            const item = order.items[index];
+            const selectPhoto = (next: number) =>
+              setOrderPhotoIndex((prev) => ({
+                ...prev,
+                [order.key]: (next + count) % count,
+              }));
 
             return (
               <GalleryPhotoCard
-                key={cardKey}
+                key={order.key}
                 item={item}
                 customEvents={customEvents}
                 globalDirHandle={localDirHandle}
                 albumMap={albumMap}
                 language={language}
                 onOpenLightbox={() =>
-                  onOpenLightbox && onOpenLightbox(item, filteredPhotos)
+                  onOpenLightbox && onOpenLightbox(item, orderedPhotos)
                 }
                 copiedId={copiedId}
                 handleCopyFileName={handleCopyFileName}
@@ -6434,11 +7121,16 @@ function GalleryDashboard({
                 setResolvedLocalUrls={setResolvedLocalUrls}
                 setVisiblePhotoKeys={setVisiblePhotoKeys}
                 permissionRetry={permissionRetry}
+                orderNav={
+                  count > 1
+                    ? { index, photos: order.items, onSelect: selectPhoto }
+                    : undefined
+                }
               />
             );
           })}
 
-          {visibleCount < filteredPhotos.length && (
+          {visibleCount < orders.length && (
             <div
               ref={sentinelRef}
               style={{
@@ -6469,6 +7161,29 @@ function GalleryDashboard({
 
 // ─── EventPhotosDashboard ────────────────────────────────────────────────────
 
+// Downscale before sending to the face search (keeps the upload small and fast)
+async function prepareFaceImage(file: File, maxSize = 1600): Promise<string> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+    } as ImageBitmapOptions);
+  } catch {
+    bitmap = await createImageBitmap(file);
+  }
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not available");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
 interface EventAlbumPhoto {
   id: string;
   albumId: string;
@@ -6488,6 +7203,9 @@ function EventPhotoCard({
   resolvedLocalUrls,
   setResolvedLocalUrls,
   permissionRetry,
+  selected = false,
+  onToggleSelect,
+  getLocalPhotoFile,
 }: {
   photo: EventAlbumPhoto;
   dirHandle: FileSystemDirectoryHandle | null;
@@ -6499,6 +7217,9 @@ function EventPhotoCard({
     React.SetStateAction<Record<string, string>>
   >;
   permissionRetry: number;
+  selected?: boolean;
+  onToggleSelect?: (photoId: string) => void;
+  getLocalPhotoFile: (fileName: string) => Promise<File | null>;
 }) {
   const [localUrl, setLocalUrl] = useState<string | null>(null);
   const [localStatus, setLocalStatus] = useState<
@@ -6509,6 +7230,7 @@ function EventPhotoCard({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const cacheKey = `evtphoto_${photo.id}`;
   const cachedUrl = resolvedLocalUrls[cacheKey];
+  const [localRetry, setLocalRetry] = useState(0);
 
   useEffect(() => {
     setHighResLoaded(false);
@@ -6530,8 +7252,12 @@ function EventPhotoCard({
     let active = true;
     async function load() {
       if (!isVisible) {
-        setLocalUrl(null);
-        setLocalStatus("idle");
+        // Keep the already resolved photo: dropping it here made the card
+        // reload (and the badge stick) every time it scrolled back in
+        if (!cachedUrl) {
+          setLocalUrl(null);
+          setLocalStatus("idle");
+        }
         return;
       }
       if (cachedUrl) {
@@ -6550,16 +7276,12 @@ function EventPhotoCard({
           setLocalStatus("permission_denied");
           return;
         }
-        const fileHandle = await findLocalPhotoHandle(
-          dirHandle,
-          photo.originalFileName,
-        );
-        if (!fileHandle || !active) {
+        const file = await getLocalPhotoFile(photo.originalFileName);
+        if (!active) return;
+        if (!file) {
           setLocalStatus("not_found");
           return;
         }
-        const file = await fileHandle.getFile();
-        if (!active) return;
         const url = URL.createObjectURL(file);
         setResolvedLocalUrls((prev) => ({ ...prev, [cacheKey]: url }));
         setLocalUrl(url);
@@ -6580,17 +7302,60 @@ function EventPhotoCard({
     cacheKey,
     setResolvedLocalUrls,
     permissionRetry,
+    getLocalPhotoFile,
+    localRetry,
   ]);
 
   const imgSrc = localUrl || photo.thumbnailUrl || photo.url;
 
   return (
-    <article className="photo-card" ref={cardRef}>
+    <article
+      className="photo-card"
+      ref={cardRef}
+      style={
+        selected
+          ? { outline: "2px solid var(--accent, #6366f1)", outlineOffset: "-2px" }
+          : undefined
+      }
+    >
       <div className="photo-image-wrap">
+        {onToggleSelect && (
+          <label
+            onClick={(e) => e.stopPropagation()}
+            title={language === "es" ? "Seleccionar para ZIP" : "Select for ZIP"}
+            style={{
+              position: "absolute",
+              top: "8px",
+              right: "8px",
+              zIndex: 3,
+              width: "28px",
+              height: "28px",
+              borderRadius: "6px",
+              background: "rgba(0, 0, 0, 0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect(photo.id)}
+              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+            />
+          </label>
+        )}
         <img
           src={imgSrc}
           alt={photo.originalFileName}
           loading="lazy"
+          ref={(el) => {
+            // A cached image may be complete before onLoad can fire
+            if (el && localUrl && el.complete && el.naturalWidth > 0) {
+              setHighResLoaded(true);
+            }
+          }}
           style={{
             transition: "opacity 0.3s",
             opacity: localUrl && highResLoaded ? 1 : 0.85,
@@ -6598,9 +7363,21 @@ function EventPhotoCard({
           onLoad={() => {
             if (localUrl) setHighResLoaded(true);
           }}
+          onError={() => {
+            if (!localUrl) return;
+            // Stale object URL: drop it from the cache and resolve again
+            setResolvedLocalUrls((prev) => {
+              if (!prev[cacheKey]) return prev;
+              const next = { ...prev };
+              delete next[cacheKey];
+              return next;
+            });
+            setLocalUrl(null);
+            setLocalStatus("idle");
+            setLocalRetry((n) => n + 1);
+          }}
         />
-        {(localStatus === "searching" ||
-          (localStatus === "found" && !highResLoaded)) && (
+        {localStatus === "searching" && (
           <span
             className="buyer-badge"
             style={{
@@ -6632,7 +7409,7 @@ function EventPhotoCard({
             {language === "es" ? "Buscando alta..." : "Searching HD..."}
           </span>
         )}
-        {localStatus === "found" && highResLoaded && (
+        {localStatus === "found" && (
           <span
             className="buyer-badge"
             style={{
@@ -6795,6 +7572,32 @@ function EventPhotosDashboard({
   const [eventDirHandle, setEventDirHandle] =
     useState<FileSystemDirectoryHandle | null>(null);
   const [selectingFolder, setSelectingFolder] = useState(false);
+  // Face search (Lumepic temporary recognition picture)
+  const [faceModalOpen, setFaceModalOpen] = useState(false);
+  const [faceFile, setFaceFile] = useState<File | null>(null);
+  const [facePreview, setFacePreview] = useState<string | null>(null);
+  const [faceLoading, setFaceLoading] = useState(false);
+  const [faceError, setFaceError] = useState<string | null>(null);
+  const [faceActive, setFaceActive] = useState(false);
+  const [faceDragging, setFaceDragging] = useState(false);
+  const faceInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ZIP export of local originals
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [zipProgress, setZipProgress] = useState<{
+    phase: "indexing" | "zipping";
+    done: number;
+    total: number;
+  } | null>(null);
+  const [zipResult, setZipResult] = useState<{
+    fileName: string;
+    added: number;
+    missing: string[];
+    error?: string;
+    note?: string;
+  } | null>(null);
 
   const LIMIT = 50;
 
@@ -6966,6 +7769,8 @@ function EventPhotosDashboard({
   );
 
   useEffect(() => {
+    // Face search results are set directly; don't overwrite them here
+    if (faceActive) return;
     if (bibNumber.trim() && canSearch) {
       setPhotos([]);
       setSkip(0);
@@ -6996,36 +7801,207 @@ function EventPhotosDashboard({
     bibNumber,
     canBrowse,
     canSearch,
+    faceActive,
     fetchPhotos,
     searchAlbumIds,
     selectedAlbumId,
   ]);
 
-  // Try to load event-specific folder from IndexedDB when album changes
+  // Restore the linked folder from IndexedDB: album first, then event.
+  // IndexedDB returns a new handle object on every read, so only replace the
+  // current one when it points to a different folder (avoids re-searching).
+  const eventDirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
   useEffect(() => {
+    let cancelled = false;
     const matchedEvent = selectedEventId
       ? customEvents.find((event) => event.id === selectedEventId)
       : customEvents.find((e) => e.albumIds.includes(selectedAlbumId));
-    if (!matchedEvent) {
-      setEventDirHandle(null);
-      return;
+
+    async function load() {
+      let handle: FileSystemDirectoryHandle | null = null;
+      if (selectedAlbumId) {
+        handle = await getStoredDirectoryHandle(`album-dir-${selectedAlbumId}`);
+      }
+      if (!handle && matchedEvent) {
+        handle = await getLocalDirectoryHandleForEvent(matchedEvent.id);
+      }
+      if (cancelled) return;
+      const current = eventDirHandleRef.current;
+      if (handle && current && (await current.isSameEntry(handle))) return;
+      if (cancelled) return;
+      eventDirHandleRef.current = handle;
+      setEventDirHandle(handle);
     }
-    if (selectedEventId || selectedAlbumId) {
-      getLocalDirectoryHandleForEvent(matchedEvent.id).then((handle) =>
-        setEventDirHandle(handle),
-      );
+
+    if (selectedAlbumId || selectedEventId) {
+      void load();
     } else {
+      eventDirHandleRef.current = null;
       setEventDirHandle(null);
     }
+    return () => {
+      cancelled = true;
+    };
   }, [customEvents, selectedAlbumId, selectedEventId]);
 
   const activeDirHandle = eventDirHandle || localDirHandle || null;
+
+  // Folder permission (Chrome asks again after a reload unless "allow on every visit")
+  const [folderPermission, setFolderPermission] = useState<
+    "granted" | "needs_prompt" | "unknown"
+  >("unknown");
+  const [folderAccessRetry, setFolderAccessRetry] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeDirHandle) {
+      setFolderPermission("unknown");
+      return;
+    }
+    verifyDirectoryPermission(activeDirHandle, false).then((granted) => {
+      if (!cancelled) setFolderPermission(granted ? "granted" : "needs_prompt");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDirHandle]);
+
+  const handleGrantFolderAccess = async () => {
+    if (!activeDirHandle) return;
+    const granted = await verifyDirectoryPermission(activeDirHandle, true);
+    setFolderPermission(granted ? "granted" : "needs_prompt");
+    if (granted) {
+      localIndexRef.current = null;
+      setFolderAccessRetry((n) => n + 1);
+    }
+  };
+
+  // One shared index of the folder for all cards (instead of a full folder
+  // walk per photo). Rebuilt when the folder changes, or on a miss if stale.
+  const localIndexRef = useRef<{
+    handle: FileSystemDirectoryHandle;
+    builtAt: number;
+    promise: Promise<Map<string, FileSystemFileHandle>>;
+  } | null>(null);
+
+  const getLocalPhotoFile = useCallback(
+    async (fileName: string): Promise<File | null> => {
+      const handle = activeDirHandle;
+      const key = fileName.toLowerCase().trim();
+      if (!handle || !key) return null;
+      if (!(await verifyDirectoryPermission(handle, false))) return null;
+
+      const cached = localIndexRef.current;
+      const sameFolder =
+        !!cached &&
+        (cached.handle === handle || (await cached.handle.isSameEntry(handle)));
+      if (!cached || !sameFolder) {
+        localIndexRef.current = {
+          handle,
+          builtAt: Date.now(),
+          promise: buildLocalPhotoIndex(handle),
+        };
+      }
+
+      let entry = (await localIndexRef.current!.promise).get(key);
+      // File may have been copied into the folder after indexing
+      if (!entry && Date.now() - localIndexRef.current!.builtAt > 60_000) {
+        localIndexRef.current = {
+          handle,
+          builtAt: Date.now(),
+          promise: buildLocalPhotoIndex(handle),
+        };
+        entry = (await localIndexRef.current.promise).get(key);
+      }
+      return entry ? entry.getFile() : null;
+    },
+    [activeDirHandle],
+  );
   const activeDirLabel = activeDirHandle?.name || null;
   const activeScopeLabel = activeEvent?.name || activeAlbum?.title || null;
 
   const handleResetSearch = () => {
     setBibInput("");
     setBibNumber("");
+    setFaceActive(false);
+  };
+
+  const setFaceImage = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setFaceError(
+        language === "es"
+          ? "El archivo tiene que ser una imagen (JPG o PNG)."
+          : "The file must be an image (JPG or PNG).",
+      );
+      return;
+    }
+    setFaceError(null);
+    setFaceFile(file);
+    setFacePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  };
+
+  const closeFaceModal = () => {
+    setFaceModalOpen(false);
+    setFaceDragging(false);
+    setFaceError(null);
+    // Start fresh next time the modal opens
+    setFaceFile(null);
+    setFacePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  };
+
+  const runFaceSearch = async () => {
+    if (!faceFile || !canSearch) return;
+    setFaceLoading(true);
+    setFaceError(null);
+    try {
+      const imageBase64 = await prepareFaceImage(faceFile);
+      const resolvedAlbumId = selectedAlbumId || searchAlbumIds[0];
+      const profileId = profiles.find((p) =>
+        p.albums.find((a) => a.id === resolvedAlbumId),
+      )?.id;
+      const res = await fetch("/api/lumepic/face-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          albumId: selectedAlbumId || undefined,
+          albumIds: searchAlbumIds,
+          profileId,
+        }),
+      });
+      const data = (await res.json()) as {
+        photos?: EventAlbumPhoto[];
+        total?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error || `Error ${res.status}`);
+      }
+      setBibInput("");
+      setBibNumber("");
+      setFaceActive(true);
+      setPhotos(data.photos || []);
+      setTotal(data.total || 0);
+      setSkip(0);
+      setError(null);
+      setSelectedPhotoIds(new Set());
+      closeFaceModal();
+    } catch (err) {
+      setFaceError(
+        err instanceof Error
+          ? err.message
+          : language === "es"
+            ? "No se pudo buscar por cara."
+            : "Face search failed.",
+      );
+    } finally {
+      setFaceLoading(false);
+    }
   };
 
   const handleSelectEvent = (eventId: string) => {
@@ -7079,12 +8055,27 @@ function EventPhotosDashboard({
         if (matchedEvent) {
           await setLocalDirectoryHandleForEvent(matchedEvent.id, handle);
         }
+        // Persist per album too, so it survives albums without an event
+        const albumIdsToLink = selectedAlbumId
+          ? [selectedAlbumId]
+          : matchedEvent?.albumIds || [];
+        await Promise.all(
+          albumIdsToLink.map((albumId) =>
+            setStoredDirectoryHandle(`album-dir-${albumId}`, handle),
+          ),
+        );
+        eventDirHandleRef.current = handle;
+        localIndexRef.current = null;
         setEventDirHandle(handle);
+        setFolderPermission("granted");
         // Reset cached URLs so they reload with the new folder
         setResolvedLocalUrls((prev) => {
           const next = { ...prev };
           Object.keys(next).forEach((k) => {
-            if (k.startsWith("evtphoto_")) delete next[k];
+            if (k.startsWith("evtphoto_")) {
+              URL.revokeObjectURL(next[k]);
+              delete next[k];
+            }
           });
           return next;
         });
@@ -7096,13 +8087,207 @@ function EventPhotosDashboard({
     }
   };
 
+  useEffect(() => {
+    setSelectedPhotoIds(new Set());
+    setZipResult(null);
+  }, [selectedAlbumId, selectedEventId, bibNumber]);
+
+  const togglePhotoSelect = useCallback((photoId: string) => {
+    setSelectedPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photoId)) next.delete(photoId);
+      else next.add(photoId);
+      return next;
+    });
+  }, []);
+
+  const allPhotosSelected =
+    photos.length > 0 && photos.every((p) => selectedPhotoIds.has(p.id));
+
+  const toggleSelectAllPhotos = () => {
+    setSelectedPhotoIds(
+      allPhotosSelected ? new Set() : new Set(photos.map((p) => p.id)),
+    );
+  };
+
+  const buildZipFileName = () => {
+    const scope =
+      compactFileNamePart(
+        activeEvent?.name || activeAlbum?.title || photos[0]?.albumTitle || "",
+      ) || "Lumepic";
+    const bib = compactFileNamePart(bibNumber.trim());
+    return `${scope}_${bib || (language === "es" ? "seleccion" : "selection")}.zip`;
+  };
+
+  const handleDownloadZip = async () => {
+    if (zipProgress) return;
+    const fileName = buildZipFileName();
+    const fail = (error: string, missing: string[] = []) =>
+      setZipResult({ fileName, added: 0, missing, error });
+
+    if (!activeDirHandle) {
+      fail(
+        language === "es"
+          ? "Vinculá la carpeta local antes de descargar el ZIP."
+          : "Link the local folder before downloading the ZIP.",
+      );
+      return;
+    }
+    const seen = new Set<string>();
+    const chosen = photos.filter((p) => {
+      if (!selectedPhotoIds.has(p.id) || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+    if (chosen.length === 0) {
+      fail(
+        language === "es"
+          ? "No hay fotos seleccionadas en la lista actual."
+          : "No selected photos in the current list.",
+      );
+      return;
+    }
+    setZipResult(null);
+
+    // The save dialog must open first: Chrome only allows it while the click
+    // gesture is still active, and a permission prompt would consume it.
+    let writable: any = null;
+    let fallbackReason = "";
+    const savePicker = (window as any).showSaveFilePicker;
+    const isIframe = window.self !== window.top;
+    if (savePicker && !isIframe) {
+      try {
+        const fileHandle = await savePicker({
+          suggestedName: fileName,
+          types: [
+            { description: "ZIP", accept: { "application/zip": [".zip"] } },
+          ],
+        });
+        writable = await fileHandle.createWritable();
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        console.warn("showSaveFilePicker failed, using browser download:", e);
+        fallbackReason = e?.message || String(e);
+      }
+    } else {
+      fallbackReason = isIframe
+        ? "iframe"
+        : language === "es"
+          ? "el navegador no permite elegir carpeta"
+          : "browser cannot pick a folder";
+    }
+
+    const hasPermission = await verifyDirectoryPermission(activeDirHandle, true);
+    if (!hasPermission) {
+      if (writable) await writable.abort().catch(() => undefined);
+      fail(
+        language === "es"
+          ? "Sin permiso para leer la carpeta local. Volvé a vincularla y probá de nuevo."
+          : "No permission to read the local folder. Re-link it and try again.",
+      );
+      return;
+    }
+
+    try {
+      setZipProgress({ phase: "indexing", done: 0, total: chosen.length });
+      const index = await buildLocalPhotoIndex(activeDirHandle);
+
+      const found: { photo: EventAlbumPhoto; handle: FileSystemFileHandle }[] =
+        [];
+      const missing: string[] = [];
+      chosen.forEach((photo) => {
+        const handle = photo.originalFileName
+          ? index.get(photo.originalFileName.toLowerCase().trim())
+          : undefined;
+        if (handle) found.push({ photo, handle });
+        else missing.push(photo.originalFileName || photo.id);
+      });
+
+      if (found.length === 0) {
+        if (writable) await writable.abort();
+        setZipResult({
+          fileName,
+          added: 0,
+          missing,
+          error:
+            language === "es"
+              ? "Ninguna foto seleccionada está en la carpeta local vinculada."
+              : "None of the selected photos are in the linked local folder.",
+        });
+        return;
+      }
+
+      setZipProgress({ phase: "zipping", done: 0, total: found.length });
+      const usedNames = new Set<string>();
+      async function* entries() {
+        let done = 0;
+        for (const { handle } of found) {
+          const file = await handle.getFile();
+          let name = file.name;
+          for (let n = 2; usedNames.has(name.toLowerCase()); n += 1) {
+            const dot = file.name.lastIndexOf(".");
+            name =
+              dot > 0
+                ? `${file.name.slice(0, dot)} (${n})${file.name.slice(dot)}`
+                : `${file.name} (${n})`;
+          }
+          usedNames.add(name.toLowerCase());
+          yield { name, lastModified: new Date(file.lastModified), input: file };
+          done += 1;
+          setZipProgress({ phase: "zipping", done, total: found.length });
+        }
+      }
+
+      const stream = makeZip(entries());
+      if (writable) {
+        await stream.pipeTo(writable);
+      } else {
+        const blob = await new Response(stream).blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
+
+      setZipResult({
+        fileName,
+        added: found.length,
+        missing,
+        note: writable
+          ? undefined
+          : language === "es"
+            ? `Se descargó en la carpeta de Descargas del navegador (${fallbackReason}).`
+            : `Saved to the browser Downloads folder (${fallbackReason}).`,
+      });
+    } catch (err) {
+      console.error("ZIP export failed:", err);
+      try {
+        if (writable) await writable.abort();
+      } catch {
+        // already closed
+      }
+      setZipResult({
+        fileName,
+        added: 0,
+        missing: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setZipProgress(null);
+    }
+  };
+
   const handleBibSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSearch) return;
     setBibNumber(bibInput);
   };
 
-  const hasMore = !bibNumber.trim() && photos.length < total;
+  const hasMore = !faceActive && !bibNumber.trim() && photos.length < total;
   const showSelectionPrompt = !selectedAlbumId && !selectedEventId;
 
   return (
@@ -7254,6 +8439,37 @@ function EventPhotosDashboard({
               >
                 {t.bibSearch}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFaceError(null);
+                  setFaceModalOpen(true);
+                }}
+                disabled={!canSearch}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  background: "var(--paper-2)",
+                  color: "var(--ink)",
+                  border: "1px solid var(--line)",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  whiteSpace: "nowrap",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  opacity: canSearch ? 1 : 0.5,
+                }}
+                title={
+                  language === "es"
+                    ? "Buscar las fotos donde aparece una cara"
+                    : "Find the photos where a face appears"
+                }
+              >
+                <UserRound size={14} />
+                {language === "es" ? "Buscar por cara" : "Search by face"}
+              </button>
               {bibNumber && (
                 <button
                   type="button"
@@ -7329,6 +8545,29 @@ function EventPhotosDashboard({
                   {language === "es" ? "Ámbito" : "Scope"}: {activeScopeLabel}
                 </span>
               )}
+              {activeDirHandle && folderPermission === "needs_prompt" && (
+                <button
+                  onClick={() => void handleGrantFolderAccess()}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    background: "#ef4444",
+                    border: "1px solid #ef4444",
+                    cursor: "pointer",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    color: "#fff",
+                  }}
+                  title={
+                    language === "es"
+                      ? "El navegador pide confirmar el acceso a la carpeta después de recargar"
+                      : "The browser asks to confirm folder access after a reload"
+                  }
+                >
+                  {language === "es" ? "Permitir acceso" : "Allow access"}
+                </button>
+              )}
               <button
                 onClick={handleSelectFolder}
                 disabled={selectingFolder}
@@ -7376,7 +8615,31 @@ function EventPhotosDashboard({
                 color: "var(--muted)",
               }}
             >
-              {bibNumber ? (
+              {faceActive ? (
+                <span>
+                  {language === "es"
+                    ? `Búsqueda por cara: ${photos.length} ${t.eventPhotosCount}${activeScopeLabel ? ` — ${activeScopeLabel}` : ""}`
+                    : `Face search: ${photos.length} ${t.eventPhotosCount}${activeScopeLabel ? ` — ${activeScopeLabel}` : ""}`}
+                  <button
+                    type="button"
+                    onClick={handleResetSearch}
+                    className="text-link-btn"
+                    style={{
+                      marginLeft: "10px",
+                      background: "none",
+                      border: "none",
+                      color: "var(--ink)",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      padding: 0,
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    {language === "es" ? "Limpiar" : "Clear"}
+                  </button>
+                </span>
+              ) : bibNumber ? (
                 <span>
                   {photos.length > 0
                     ? `${t.bibResultsLabel} #${bibNumber}: ${photos.length} ${t.eventPhotosCount}${activeScopeLabel ? ` — ${activeScopeLabel}` : ""}`
@@ -7505,6 +8768,138 @@ function EventPhotosDashboard({
         </section>
       ) : (
         <>
+          <section
+            className="panel"
+            style={{
+              marginBottom: "12px",
+              padding: "12px 16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                onClick={toggleSelectAllPhotos}
+                disabled={photos.length === 0}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  background: "var(--paper-2)",
+                  border: "1px solid var(--line)",
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                }}
+              >
+                {allPhotosSelected
+                  ? language === "es"
+                    ? "Deseleccionar todas"
+                    : "Deselect all"
+                  : language === "es"
+                    ? `Seleccionar todas (${photos.length})`
+                    : `Select all (${photos.length})`}
+              </button>
+              <span style={{ fontSize: "0.82rem", color: "var(--muted)", flex: 1 }}>
+                {selectedPhotoIds.size > 0
+                  ? language === "es"
+                    ? `${selectedPhotoIds.size} seleccionadas · ${buildZipFileName()}`
+                    : `${selectedPhotoIds.size} selected · ${buildZipFileName()}`
+                  : language === "es"
+                    ? "Marcá fotos para descargar sus originales locales en un ZIP."
+                    : "Select photos to download their local originals as a ZIP."}
+              </span>
+              <button
+                onClick={() => void handleDownloadZip()}
+                disabled={selectedPhotoIds.size === 0 || !!zipProgress}
+                title={
+                  !activeDirHandle
+                    ? language === "es"
+                      ? "Vinculá la carpeta local para exportar los originales"
+                      : "Link the local folder to export originals"
+                    : undefined
+                }
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  background: "var(--ink)",
+                  border: "1px solid var(--ink)",
+                  color: "var(--white, #fff)",
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  opacity:
+                    selectedPhotoIds.size === 0 || !activeDirHandle || zipProgress
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                {zipProgress ? (
+                  <RefreshCw size={13} className="spin" />
+                ) : (
+                  <Download size={13} />
+                )}
+                {zipProgress
+                  ? zipProgress.phase === "indexing"
+                    ? language === "es"
+                      ? "Buscando originales..."
+                      : "Finding originals..."
+                    : `ZIP ${zipProgress.done}/${zipProgress.total}`
+                  : language === "es"
+                    ? `Descargar ZIP (${selectedPhotoIds.size})`
+                    : `Download ZIP (${selectedPhotoIds.size})`}
+              </button>
+            </div>
+            {!activeDirHandle && selectedPhotoIds.size > 0 && (
+              <span style={{ fontSize: "0.78rem", color: "#b45309" }}>
+                {language === "es"
+                  ? "Vinculá la carpeta local (arriba) para poder armar el ZIP con las fotos en alta."
+                  : "Link the local folder (above) to build the ZIP with full-resolution photos."}
+              </span>
+            )}
+            {zipResult && (
+              <div
+                style={{
+                  fontSize: "0.8rem",
+                  color: zipResult.error ? "var(--red, #ef4444)" : "var(--ink)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
+              >
+                <span>
+                  {zipResult.error
+                    ? zipResult.error
+                    : language === "es"
+                      ? `Listo: ${zipResult.fileName} con ${zipResult.added} fotos.`
+                      : `Done: ${zipResult.fileName} with ${zipResult.added} photos.`}
+                </span>
+                {zipResult.note && (
+                  <span style={{ color: "var(--muted)" }}>{zipResult.note}</span>
+                )}
+                {zipResult.missing.length > 0 && (
+                  <span style={{ color: "#b45309" }}>
+                    {language === "es"
+                      ? `No encontradas en la carpeta local (${zipResult.missing.length}): `
+                      : `Not found in the local folder (${zipResult.missing.length}): `}
+                    {zipResult.missing.slice(0, 10).join(", ")}
+                    {zipResult.missing.length > 10 ? "…" : ""}
+                  </span>
+                )}
+              </div>
+            )}
+          </section>
           <section className="gallery-grid">
             {photos.map((photo, idx) => (
               <EventPhotoCard
@@ -7516,7 +8911,10 @@ function EventPhotosDashboard({
                 onCopy={handleCopy}
                 resolvedLocalUrls={resolvedLocalUrls}
                 setResolvedLocalUrls={setResolvedLocalUrls}
-                permissionRetry={permissionRetry ?? 0}
+                permissionRetry={(permissionRetry ?? 0) + folderAccessRetry}
+                getLocalPhotoFile={getLocalPhotoFile}
+                selected={selectedPhotoIds.has(photo.id)}
+                onToggleSelect={togglePhotoSelect}
               />
             ))}
           </section>
@@ -7574,6 +8972,109 @@ function EventPhotosDashboard({
             </div>
           )}
         </>
+      )}
+      {faceModalOpen && (
+        <div className="lightbox-backdrop" onClick={closeFaceModal}>
+          <div
+            className="face-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="lightbox-close"
+              onClick={closeFaceModal}
+              aria-label={language === "es" ? "Cerrar" : "Close"}
+            >
+              <X size={20} />
+            </button>
+            <h2>
+              {language === "es" ? "Buscar por cara" : "Search by face"}
+            </h2>
+            <p className="face-modal-desc">
+              {language === "es"
+                ? "Subí una foto donde se vea bien la cara. Lumepic busca esa cara en las fotos del álbum y las tarjetas muestran tus originales locales en alta."
+                : "Upload a photo where the face is clearly visible. Lumepic finds that face in the album and the cards show your local originals in full resolution."}
+            </p>
+            <div
+              className={`face-dropzone${faceDragging ? " is-active" : ""}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setFaceDragging(true);
+              }}
+              onDragLeave={() => setFaceDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setFaceDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) setFaceImage(file);
+              }}
+              onClick={() => faceInputRef.current?.click()}
+            >
+              {facePreview ? (
+                <img src={facePreview} alt="" />
+              ) : (
+                <>
+                  <Images size={28} style={{ color: "var(--muted)" }} />
+                  <strong>
+                    {language === "es"
+                      ? "Arrastrá una foto acá"
+                      : "Drag a photo here"}
+                  </strong>
+                  <span>
+                    {language === "es"
+                      ? "o hacé clic para elegir un archivo"
+                      : "or click to choose a file"}
+                  </span>
+                </>
+              )}
+            </div>
+            <input
+              ref={faceInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) setFaceImage(file);
+                e.target.value = "";
+              }}
+            />
+            {facePreview && (
+              <button
+                type="button"
+                className="text-link-btn face-modal-change"
+                onClick={() => faceInputRef.current?.click()}
+              >
+                {language === "es" ? "Elegir otra foto" : "Choose another photo"}
+              </button>
+            )}
+            {faceError && <span className="face-error">{faceError}</span>}
+            <div className="face-modal-actions">
+              <button type="button" onClick={closeFaceModal}>
+                {language === "es" ? "Cancelar" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={!faceFile || faceLoading}
+                onClick={() => void runFaceSearch()}
+              >
+                {faceLoading ? (
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    {language === "es" ? "Buscando..." : "Searching..."}
+                  </>
+                ) : (
+                  <>
+                    <Search size={14} />
+                    {language === "es" ? "Buscar" : "Search"}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
@@ -11294,6 +12795,271 @@ function CullingDashboard({ language = "en" }: { language?: Language }) {
   );
 }
 
+interface PhotoLookupResult {
+  id: string;
+  found: boolean;
+  originalFileName?: string;
+  albumId?: string;
+  ownerId?: string;
+  takenDate?: string;
+  uploadedAt?: string;
+  thumbnailUrl?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+  profileLabel?: string;
+  error?: string;
+}
+
+function PhotoLookupDashboard({ language = "en" }: { language: Language }) {
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<PhotoLookupResult[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const es = language === "es";
+
+  const runLookup = async () => {
+    if (!input.trim() || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/lumepic/photo-lookup?ids=${encodeURIComponent(input)}`,
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setResults(data.results || []);
+    } catch (err) {
+      setResults([]);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = (key: string, text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(key);
+      setTimeout(() => setCopiedId((c) => (c === key ? null : c)), 1500);
+    });
+  };
+
+  const foundNames = results
+    .filter((r) => r.found && r.originalFileName)
+    .map((r) => r.originalFileName as string);
+
+  const cardStyle = {
+    background: "var(--paper)",
+    border: "1px solid var(--line)",
+    borderRadius: "16px",
+    padding: "20px",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div style={{ ...cardStyle, padding: "24px" }}>
+        <h2
+          style={{
+            fontSize: "1.5rem",
+            fontWeight: "700",
+            marginBottom: "8px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}
+        >
+          <Search size={24} />
+          {es ? "Buscar foto por ID" : "Photo ID lookup"}
+        </h2>
+        <p style={{ color: "var(--muted)", fontSize: "0.88rem", lineHeight: "1.4" }}>
+          {es
+            ? "Pegá uno o varios IDs de foto de Lumepic (o URLs que los contengan) y te devuelve el nombre de archivo original."
+            : "Paste one or more Lumepic photo IDs (or URLs containing them) to get the original filename."}
+        </p>
+      </div>
+
+      <div
+        style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: "12px" }}
+      >
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void runLookup();
+            }
+          }}
+          placeholder="55608e14-56e2-4875-8274-3363c3e86075"
+          rows={3}
+          style={{
+            width: "100%",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: "0.85rem",
+            padding: "10px 12px",
+            borderRadius: "10px",
+            border: "1px solid var(--line)",
+            background: "transparent",
+            color: "var(--ink)",
+            resize: "vertical",
+          }}
+        />
+        <div
+          style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}
+        >
+          <button
+            className="text-button"
+            onClick={() => void runLookup()}
+            disabled={loading || !input.trim()}
+          >
+            {loading ? (
+              <RefreshCw size={16} className="spin" />
+            ) : (
+              <Search size={16} />
+            )}
+            {es ? "Buscar" : "Look up"}
+          </button>
+          {foundNames.length > 1 && (
+            <button
+              className="text-button"
+              onClick={() => copy("__all__", foundNames.join("\n"))}
+            >
+              {copiedId === "__all__" ? <Check size={16} /> : <Copy size={16} />}
+              {es
+                ? `Copiar ${foundNames.length} nombres`
+                : `Copy ${foundNames.length} names`}
+            </button>
+          )}
+          <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+            {es
+              ? "Enter para buscar · Shift+Enter nueva línea"
+              : "Enter to search · Shift+Enter new line"}
+          </span>
+        </div>
+        {error && (
+          <p style={{ color: "var(--danger, #ef4444)", fontSize: "0.85rem" }}>
+            {error}
+          </p>
+        )}
+      </div>
+
+      {results.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {results.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                ...cardStyle,
+                padding: "14px",
+                display: "flex",
+                gap: "14px",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              {r.thumbnailUrl ? (
+                <a href={r.url || r.thumbnailUrl} target="_blank" rel="noreferrer">
+                  <img
+                    src={r.thumbnailUrl}
+                    alt={r.originalFileName || r.id}
+                    style={{
+                      width: "72px",
+                      height: "72px",
+                      objectFit: "cover",
+                      borderRadius: "8px",
+                      border: "1px solid var(--line)",
+                    }}
+                  />
+                </a>
+              ) : (
+                <div
+                  style={{
+                    width: "72px",
+                    height: "72px",
+                    borderRadius: "8px",
+                    border: "1px dashed var(--line)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--muted)",
+                  }}
+                >
+                  <X size={20} />
+                </div>
+              )}
+              <div
+                style={{
+                  flex: "1 1 220px",
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
+              >
+                {r.found ? (
+                  <strong style={{ fontSize: "1.05rem", wordBreak: "break-all" }}>
+                    {r.originalFileName ||
+                      (es ? "(sin nombre original)" : "(no original filename)")}
+                  </strong>
+                ) : (
+                  <strong style={{ color: "var(--danger, #ef4444)" }}>
+                    {es ? "No encontrada" : "Not found"}
+                  </strong>
+                )}
+                <span
+                  style={{
+                    fontSize: "0.72rem",
+                    color: "var(--muted)",
+                    fontFamily: "ui-monospace, monospace",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {r.id}
+                </span>
+                {r.found ? (
+                  <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                    {[
+                      r.takenDate &&
+                        new Date(r.takenDate).toLocaleString(es ? "es-AR" : "en-US"),
+                      r.width && r.height ? `${r.width}×${r.height}` : null,
+                      r.albumId && `${es ? "Álbum" : "Album"} ${r.albumId.slice(0, 8)}`,
+                      r.profileLabel,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : (
+                  r.error && (
+                    <span
+                      style={{
+                        fontSize: "0.72rem",
+                        color: "var(--muted)",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {r.error}
+                    </span>
+                  )
+                )}
+              </div>
+              {r.found && r.originalFileName && (
+                <button
+                  className="icon-button"
+                  onClick={() => copy(r.id, r.originalFileName as string)}
+                  title={es ? "Copiar nombre" : "Copy filename"}
+                >
+                  {copiedId === r.id ? <Check size={16} /> : <Copy size={16} />}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface CleanerDashboardProps {
   language: Language;
   profiles: DashboardSummary[];
@@ -11308,6 +13074,10 @@ function CleanerDashboard({
   const [fetchingRemote, setFetchingRemote] = useState(false);
   const [remotePhotos, setRemotePhotos] = useState<any[]>([]);
   const [remotePhotoCount, setRemotePhotoCount] = useState<number | null>(null);
+  const [remotePhotoTotal, setRemotePhotoTotal] = useState<number | null>(null);
+  const [soldIds, setSoldIds] = useState<Set<string> | null>(null);
+  const [soldError, setSoldError] = useState<string | null>(null);
+  const [checkingSold, setCheckingSold] = useState(false);
 
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [readingLocal, setReadingLocal] = useState(false);
@@ -11323,7 +13093,7 @@ function CleanerDashboard({
     isDeleting: boolean;
   } | null>(null);
   const [deleteStatuses, setDeleteStatuses] = useState<
-    Record<string, "ready" | "deleting" | "success" | "error">
+    Record<string, "ready" | "deleting" | "success" | "error" | "sold">
   >({});
 
   const allAlbums = useMemo(() => {
@@ -11359,7 +13129,11 @@ function CleanerDashboard({
     setDeleteStatuses({});
   };
 
-  const comparePhotos = useCallback((localList: File[], remoteList: any[]) => {
+  const comparePhotos = useCallback((
+    localList: File[],
+    remoteList: any[],
+    sold: Set<string> | null,
+  ) => {
     const remoteMap = new Map<string, any>();
     remoteList.forEach((photo) => {
       if (photo.originalFileName) {
@@ -11371,7 +13145,7 @@ function CleanerDashboard({
     const comparedMatches: any[] = [];
     const initialStatuses: Record<
       string,
-      "ready" | "deleting" | "success" | "error"
+      "ready" | "deleting" | "success" | "error" | "sold"
     > = {};
 
     localList.forEach((localFile) => {
@@ -11388,14 +13162,33 @@ function CleanerDashboard({
           size: localFile.size,
           lastModified: localFile.lastModified,
         });
-        initialStatuses[matchedRemote.id] = "ready";
+        initialStatuses[matchedRemote.id] = sold?.has(matchedRemote.id)
+          ? "sold"
+          : "ready";
       }
     });
 
     setMatches(comparedMatches);
     setDeleteStatuses(initialStatuses);
-    setSelectedMatches(new Set(comparedMatches.map((m) => m.remoteId)));
+    setSelectedMatches(
+      new Set(
+        comparedMatches
+          .map((m) => m.remoteId)
+          .filter((id) => initialStatuses[id] !== "sold"),
+      ),
+    );
   }, []);
+
+  const fetchSoldIds = async (refresh: boolean) => {
+    const res = await fetch("/api/lumepic/watcher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "list-sold-photographs", refresh }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return new Set<string>(data.soldIds || []);
+  };
 
   const handleFetchRemotePhotos = async () => {
     if (!selectedAlbumKey) return;
@@ -11407,9 +13200,24 @@ function CleanerDashboard({
     setFetchingRemote(true);
     setRemotePhotos([]);
     setRemotePhotoCount(null);
+    setRemotePhotoTotal(null);
     setMatches([]);
     setSelectedMatches(new Set());
     setDeleteStatuses({});
+
+    setCheckingSold(true);
+    setSoldError(null);
+    const soldPromise = fetchSoldIds(true)
+      .then((ids) => {
+        setSoldIds(ids);
+        return ids;
+      })
+      .catch((err) => {
+        setSoldIds(null);
+        setSoldError(err instanceof Error ? err.message : String(err));
+        return null;
+      })
+      .finally(() => setCheckingSold(false));
 
     try {
       const res = await fetch("/api/lumepic/watcher", {
@@ -11436,9 +13244,11 @@ function CleanerDashboard({
       const photos = data.photographs || [];
       setRemotePhotos(photos);
       setRemotePhotoCount(data.count || 0);
+      setRemotePhotoTotal(data.total ?? null);
 
+      const sold = await soldPromise;
       if (localFiles.length > 0) {
-        comparePhotos(localFiles, photos);
+        comparePhotos(localFiles, photos, sold);
       }
     } catch (err) {
       console.error("Error fetching remote photos:", err);
@@ -11484,7 +13294,7 @@ function CleanerDashboard({
       setReadingLocal(false);
 
       if (remotePhotos.length > 0) {
-        comparePhotos(list, remotePhotos);
+        comparePhotos(list, remotePhotos, soldIds);
       }
     } catch (e: any) {
       setReadingLocal(false);
@@ -11520,11 +13330,12 @@ function CleanerDashboard({
     setReadingLocal(false);
 
     if (remotePhotos.length > 0) {
-      comparePhotos(list, remotePhotos);
+      comparePhotos(list, remotePhotos, soldIds);
     }
   };
 
   const toggleMatchSelect = (remoteId: string) => {
+    if (deleteStatuses[remoteId] === "sold") return;
     const updated = new Set(selectedMatches);
     if (updated.has(remoteId)) {
       updated.delete(remoteId);
@@ -11534,11 +13345,16 @@ function CleanerDashboard({
     setSelectedMatches(updated);
   };
 
+  const selectableMatchIds = matches
+    .map((m) => m.remoteId)
+    .filter((id) => deleteStatuses[id] !== "sold");
+  const soldMatchCount = matches.length - selectableMatchIds.length;
+
   const toggleSelectAll = () => {
-    if (selectedMatches.size === matches.length) {
+    if (selectedMatches.size === selectableMatchIds.length) {
       setSelectedMatches(new Set());
     } else {
-      setSelectedMatches(new Set(matches.map((m) => m.remoteId)));
+      setSelectedMatches(new Set(selectableMatchIds));
     }
   };
 
@@ -11574,7 +13390,7 @@ function CleanerDashboard({
 
   const canToggleMatch = (remoteId: string) => {
     const status = deleteStatuses[remoteId];
-    return status !== "success" && status !== "deleting";
+    return status !== "success" && status !== "deleting" && status !== "sold";
   };
 
   const showPrevPreview = () =>
@@ -11605,15 +13421,51 @@ function CleanerDashboard({
   });
 
   const handleDeleteSelected = async () => {
-    const toDelete = Array.from(selectedMatches).filter(
+    const candidates = Array.from(selectedMatches).filter(
       (id) => deleteStatuses[id] === "ready" || deleteStatuses[id] === "error",
     );
+    if (candidates.length === 0) return;
+
+    // Re-check sales right before deleting: something may have sold since the
+    // album was loaded.
+    let freshSold: Set<string>;
+    setCheckingSold(true);
+    try {
+      freshSold = await fetchSoldIds(true);
+      setSoldIds(freshSold);
+      setSoldError(null);
+    } catch (err) {
+      setSoldError(err instanceof Error ? err.message : String(err));
+      alert(
+        language === "es"
+          ? "No pude verificar las ventas en Lumepic. No se borró nada."
+          : "Could not verify Lumepic sales. Nothing was deleted.",
+      );
+      return;
+    } finally {
+      setCheckingSold(false);
+    }
+
+    const newlySold = candidates.filter((id) => freshSold.has(id));
+    if (newlySold.length > 0) {
+      setDeleteStatuses((prev) => {
+        const next = { ...prev };
+        newlySold.forEach((id) => (next[id] = "sold"));
+        return next;
+      });
+      setSelectedMatches((prev) => {
+        const next = new Set(prev);
+        newlySold.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+    const toDelete = candidates.filter((id) => !freshSold.has(id));
     if (toDelete.length === 0) return;
 
     const confirmed = window.confirm(
       language === "es"
-        ? `¿Seguro que deseas eliminar estas ${toDelete.length} fotos del álbum de Lumepic?\n\nEsta acción no se puede deshacer y borrará las fotos de la plataforma remota.`
-        : `Are you sure you want to delete these ${toDelete.length} photos from the Lumepic album?\n\nThis action cannot be undone and will delete the photos from the remote platform.`,
+        ? `¿Seguro que deseas eliminar estas ${toDelete.length} fotos del álbum de Lumepic?${newlySold.length ? `\n\n${newlySold.length} se vendieron recién y se omitieron.` : ""}\n\nEsta acción no se puede deshacer y borrará las fotos de la plataforma remota.`
+        : `Are you sure you want to delete these ${toDelete.length} photos from the Lumepic album?${newlySold.length ? `\n\n${newlySold.length} were just sold and were skipped.` : ""}\n\nThis action cannot be undone and will delete the photos from the remote platform.`,
     );
     if (!confirmed) return;
 
@@ -11634,6 +13486,13 @@ function CleanerDashboard({
 
         if (res.ok) {
           setDeleteStatuses((prev) => ({ ...prev, [photoId]: "success" }));
+        } else if (res.status === 409) {
+          setDeleteStatuses((prev) => ({ ...prev, [photoId]: "sold" }));
+          setSelectedMatches((prev) => {
+            const next = new Set(prev);
+            next.delete(photoId);
+            return next;
+          });
         } else {
           setDeleteStatuses((prev) => ({ ...prev, [photoId]: "error" }));
         }
@@ -11771,13 +13630,19 @@ function CleanerDashboard({
                   const isSelected = selectedMatches.has(previewMatch.remoteId);
                   const toggleable = canToggleMatch(previewMatch.remoteId);
                   const color =
-                    status === "success"
+                    status === "sold"
+                      ? "#8b5cf6"
+                      : status === "success"
                       ? "#10b981"
                       : isSelected
                         ? "var(--danger, #ef4444)"
                         : "#10b981";
                   const label =
-                    status === "success"
+                    status === "sold"
+                      ? language === "es"
+                        ? "Vendida · se omite, no se borra"
+                        : "Sold · skipped, won't be deleted"
+                      : status === "success"
                       ? language === "es"
                         ? "Ya eliminada de Lumepic"
                         : "Already deleted from Lumepic"
@@ -12098,8 +13963,8 @@ function CleanerDashboard({
               <CheckCircle2 size={14} />
               <span>
                 {language === "es"
-                  ? `${remotePhotoCount} fotos remotas indexadas.`
-                  : `${remotePhotoCount} remote photos indexed.`}
+                  ? `${remotePhotoCount}${remotePhotoTotal && remotePhotoTotal !== remotePhotoCount ? ` de ${remotePhotoTotal}` : ""} fotos remotas indexadas.`
+                  : `${remotePhotoCount}${remotePhotoTotal && remotePhotoTotal !== remotePhotoCount ? ` of ${remotePhotoTotal}` : ""} remote photos indexed.`}
               </span>
             </div>
           )}
@@ -12342,6 +14207,46 @@ function CleanerDashboard({
                   ? "Se listan las fotos locales que existen en el álbum remoto. Marcá las que querés borrar definitivamente."
                   : "Listing local photos that exist in the remote album. Check the ones you want to permanently delete."}
               </p>
+              {checkingSold ? (
+                <p
+                  style={{
+                    color: "var(--muted)",
+                    fontSize: "0.78rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    marginTop: "4px",
+                  }}
+                >
+                  <RefreshCw size={12} className="spin" />
+                  {language === "es" ? "Verificando ventas..." : "Checking sales..."}
+                </p>
+              ) : soldError ? (
+                <p
+                  style={{
+                    color: "var(--danger, #ef4444)",
+                    fontSize: "0.78rem",
+                    marginTop: "4px",
+                  }}
+                >
+                  {language === "es"
+                    ? `No se pudieron verificar las ventas (${soldError}). El borrado volverá a verificarlas y no borrará nada si falla.`
+                    : `Could not verify sales (${soldError}). Deleting re-checks them and deletes nothing if that fails.`}
+                </p>
+              ) : soldIds && soldMatchCount > 0 ? (
+                <p
+                  style={{
+                    color: "#8b5cf6",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    marginTop: "4px",
+                  }}
+                >
+                  {language === "es"
+                    ? `${soldMatchCount} ${soldMatchCount === 1 ? "foto vendida se omite" : "fotos vendidas se omiten"} y no se van a borrar.`
+                    : `${soldMatchCount} sold ${soldMatchCount === 1 ? "photo is" : "photos are"} skipped and won't be deleted.`}
+                </p>
+              ) : null}
             </div>
             {matches.length > 0 && (
               <div style={{ display: "flex", gap: "12px" }}>
@@ -12354,7 +14259,8 @@ function CleanerDashboard({
                     cursor: "pointer",
                   }}
                 >
-                  {selectedMatches.size === matches.length
+                  {selectableMatchIds.length > 0 &&
+                  selectedMatches.size === selectableMatchIds.length
                     ? language === "es"
                       ? "Deseleccionar Todo"
                       : "Deselect All"
@@ -12365,7 +14271,9 @@ function CleanerDashboard({
                 <button
                   onClick={handleDeleteSelected}
                   disabled={
-                    selectedMatches.size === 0 || deleteProgress?.isDeleting
+                    selectedMatches.size === 0 ||
+                    deleteProgress?.isDeleting ||
+                    checkingSold
                   }
                   className="text-button"
                   style={{
@@ -12377,7 +14285,9 @@ function CleanerDashboard({
                     color: "#fff",
                     border: "1px solid var(--danger, #ef4444)",
                     opacity:
-                      selectedMatches.size === 0 || deleteProgress?.isDeleting
+                      selectedMatches.size === 0 ||
+                      deleteProgress?.isDeleting ||
+                      checkingSold
                         ? 0.5
                         : 1,
                     display: "flex",
@@ -12476,6 +14386,10 @@ function CleanerDashboard({
               } else if (status === "error") {
                 statusLabel = language === "es" ? "Error" : "Failed";
                 statusColor = "#ef4444";
+              } else if (status === "sold") {
+                statusLabel =
+                  language === "es" ? "Vendida · omitida" : "Sold · skipped";
+                statusColor = "#8b5cf6";
               }
 
               return (
@@ -12483,9 +14397,12 @@ function CleanerDashboard({
                   key={match.remoteId}
                   style={{
                     background: "var(--paper-2)",
-                    border: isSelected
-                      ? "1px solid var(--danger, #ef4444)"
-                      : "1px solid var(--line)",
+                    border:
+                      status === "sold"
+                        ? "1px solid #8b5cf6"
+                        : isSelected
+                          ? "1px solid var(--danger, #ef4444)"
+                          : "1px solid var(--line)",
                     borderRadius: "12px",
                     overflow: "hidden",
                     display: "flex",
@@ -12495,7 +14412,30 @@ function CleanerDashboard({
                     opacity: status === "success" ? 0.6 : 1,
                   }}
                 >
-                  {status !== "success" && (
+                  {status === "sold" && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "10px",
+                        left: "10px",
+                        zIndex: 10,
+                        padding: "3px 8px",
+                        borderRadius: "999px",
+                        background: "#8b5cf6",
+                        color: "#fff",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                      }}
+                      title={
+                        language === "es"
+                          ? "Esta foto fue comprada en Lumepic; no se va a borrar."
+                          : "This photo was purchased on Lumepic; it won't be deleted."
+                      }
+                    >
+                      {language === "es" ? "VENDIDA" : "SOLD"}
+                    </span>
+                  )}
+                  {status !== "success" && status !== "sold" && (
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -14638,6 +16578,8 @@ export function Dashboard() {
 
   // Referencia mutable para almacenar ventas ya conocidas
   const knownSaleIdsRef = useRef<Set<string>>(new Set());
+  // Newest sale timestamp seen so far; older unseen sales come from loading more history, not new purchases.
+  const latestKnownSaleTimeRef = useRef(0);
   const isLanguageMountedRef = useRef(false);
 
   // Clientes View States
@@ -14701,8 +16643,14 @@ export function Dashboard() {
       Object.entries(prev).forEach(([key, url]) => {
         const isCurrentlyOpenInLightbox = key === activeLightboxKey;
         const isVisibleInGallery = !!visiblePhotoKeys[key];
+        // Event Photos manages its own entries (it doesn't report visibility)
+        const isEventPhotosEntry = key.startsWith("evtphoto_");
 
-        if (!isCurrentlyOpenInLightbox && !isVisibleInGallery) {
+        if (
+          !isCurrentlyOpenInLightbox &&
+          !isVisibleInGallery &&
+          !isEventPhotosEntry
+        ) {
           URL.revokeObjectURL(url);
           delete next[key];
           changed = true;
@@ -14922,6 +16870,32 @@ export function Dashboard() {
     }
   }, [activeLightboxPhoto, lightboxPhotoList]);
 
+  // Jump to the first photo of the previous/next order (list is grouped by sale)
+  const jumpLightboxOrder = useCallback(
+    (direction: 1 | -1) => {
+      if (!activeLightboxPhoto) return;
+      const list = lightboxPhotoList;
+      const saleId = activeLightboxPhoto.sale.id;
+      const firstIdx = list.findIndex((p) => p.sale.id === saleId);
+      if (firstIdx < 0) return;
+      if (direction === 1) {
+        for (let i = firstIdx; i < list.length; i += 1) {
+          if (list[i].sale.id !== saleId) {
+            setActiveLightboxPhoto(list[i]);
+            return;
+          }
+        }
+        return;
+      }
+      let i = firstIdx - 1;
+      if (i < 0) return;
+      const prevSaleId = list[i].sale.id;
+      while (i > 0 && list[i - 1].sale.id === prevSaleId) i -= 1;
+      setActiveLightboxPhoto(list[i]);
+    },
+    [activeLightboxPhoto, lightboxPhotoList],
+  );
+
   useEffect(() => {
     if (!activeLightboxPhoto) return;
 
@@ -14932,6 +16906,12 @@ export function Dashboard() {
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         handleNextLightboxPhoto();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        jumpLightboxOrder(1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        jumpLightboxOrder(-1);
       } else if (e.key === "Escape") {
         setActiveLightboxPhoto(null);
       }
@@ -14941,7 +16921,12 @@ export function Dashboard() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeLightboxPhoto, handlePrevLightboxPhoto, handleNextLightboxPhoto]);
+  }, [
+    activeLightboxPhoto,
+    handlePrevLightboxPhoto,
+    handleNextLightboxPhoto,
+    jumpLightboxOrder,
+  ]);
 
   const handleLinkActiveFolder = async () => {
     try {
@@ -15475,7 +17460,8 @@ export function Dashboard() {
       activeView !== "gallery" &&
       activeView !== "event-photos" &&
       activeView !== "culling" &&
-      activeView !== "cleaner"
+      activeView !== "cleaner" &&
+      activeView !== "photo-lookup"
     ) {
       const exists = dashboard.profiles.some((p) => p.id === activeView);
       if (!exists) {
@@ -15634,16 +17620,25 @@ export function Dashboard() {
       if (!data || !data.profiles) return;
 
       const newSales: Array<{ sale: Sale; profileLabel: string }> = [];
+      const latestKnown = latestKnownSaleTimeRef.current;
 
       data.profiles.forEach((profile) => {
         profile.sales.forEach((sale) => {
+          const saleTime = new Date(sale.date).getTime() || 0;
           if (
             knownSaleIdsRef.current.size > 0 &&
             !knownSaleIdsRef.current.has(sale.id)
           ) {
-            const profileLabel =
-              customProfileLabels[profile.id] || profile.label;
-            newSales.push({ sale, profileLabel });
+            if (saleTime > latestKnown) {
+              const profileLabel =
+                customProfileLabels[profile.id] || profile.label;
+              newSales.push({ sale, profileLabel });
+            } else {
+              knownSaleIdsRef.current.add(sale.id);
+            }
+          }
+          if (saleTime > latestKnownSaleTimeRef.current) {
+            latestKnownSaleTimeRef.current = saleTime;
           }
         });
       });
@@ -16420,6 +18415,7 @@ export function Dashboard() {
   const isEventPhotosView = activeView === "event-photos";
   const isCullingView = activeView === "culling";
   const isCleanerView = activeView === "cleaner";
+  const isPhotoLookupView = activeView === "photo-lookup";
   const showConsolidated = activeView === "consolidated";
 
   const switcherOptions = useMemo(() => {
@@ -16508,6 +18504,14 @@ export function Dashboard() {
       badge: language === "es" ? "Nuevo" : "New",
     });
 
+    opts.push({
+      id: "photo-lookup",
+      label: language === "es" ? "Buscar foto por ID" : "Photo ID lookup",
+      icon: <Search size={14} />,
+      dotColor: null,
+      badge: null,
+    });
+
     return opts;
   }, [dashboard, language, t.consolidated, t.clients]);
 
@@ -16547,7 +18551,7 @@ export function Dashboard() {
         revenue: clients.reduce((acc, c) => acc + c.totalSpent, 0),
         albums: dashboard.consolidated.totals.albums,
       }
-    : isWatcherView || isCullingView || isCleanerView
+    : isWatcherView || isCullingView || isCleanerView || isPhotoLookupView
       ? { revenue: 0, albums: dashboard.consolidated.totals.albums }
       : isGalleryView
         ? {
@@ -16565,7 +18569,8 @@ export function Dashboard() {
     !isGalleryView &&
     !isEventPhotosView &&
     !isCullingView &&
-    !isCleanerView
+    !isCleanerView &&
+    !isPhotoLookupView
       ? activeProfile?.warning
       : null,
   ]
@@ -16659,7 +18664,8 @@ export function Dashboard() {
                     opt.id !== "gallery" &&
                     opt.id !== "event-photos" &&
                     opt.id !== "culling" &&
-                    opt.id !== "cleaner"
+                    opt.id !== "cleaner" &&
+                    opt.id !== "photo-lookup"
                   ) {
                     const profile = dashboard.profiles.find(
                       (p) => p.id === opt.id,
@@ -16805,7 +18811,8 @@ export function Dashboard() {
                             opt.id !== "gallery" &&
                             opt.id !== "event-photos" &&
                             opt.id !== "culling" &&
-                            opt.id !== "cleaner"
+                            opt.id !== "cleaner" &&
+                            opt.id !== "photo-lookup"
                           ) {
                             const profile = dashboard.profiles.find(
                               (p) => p.id === opt.id,
@@ -17139,6 +19146,8 @@ export function Dashboard() {
             />
           ) : isCullingView ? (
             <CullingDashboard language={language} />
+          ) : isPhotoLookupView ? (
+            <PhotoLookupDashboard language={language} />
           ) : isCleanerView ? (
             <CleanerDashboard
               language={language}
@@ -17559,9 +19568,14 @@ export function Dashboard() {
                               transition: "all 0.2s ease",
                             }}
                             title={
-                              language === "es"
-                                ? "Siguiente (Flecha Derecha)"
-                                : "Next (Right Arrow)"
+                              lightboxPhotoList[currentIndex + 1]?.sale.id !==
+                              activeLightboxPhoto.sale.id
+                                ? language === "es"
+                                  ? "Siguiente orden (Flecha Derecha)"
+                                  : "Next order (Right Arrow)"
+                                : language === "es"
+                                  ? "Siguiente (Flecha Derecha)"
+                                  : "Next (Right Arrow)"
                             }
                             className="lightbox-nav-btn"
                           >
@@ -17578,6 +19592,147 @@ export function Dashboard() {
                     ? "Detalle de Fotografía"
                     : "Photograph Detail"}
                 </h2>
+                {(() => {
+                  const saleId = activeLightboxPhoto.sale.id;
+                  const orderIds: string[] = [];
+                  const seenOrders = new Set<string>();
+                  lightboxPhotoList.forEach((p) => {
+                    if (!seenOrders.has(p.sale.id)) {
+                      seenOrders.add(p.sale.id);
+                      orderIds.push(p.sale.id);
+                    }
+                  });
+                  const orderPhotos = lightboxPhotoList.filter(
+                    (p) => p.sale.id === saleId,
+                  );
+                  if (orderIds.length <= 1 && orderPhotos.length <= 1) {
+                    return null;
+                  }
+                  const orderPos = orderIds.indexOf(saleId);
+                  const photoPos = orderPhotos.findIndex(
+                    (p) => p.id === activeLightboxPhoto.id,
+                  );
+                  const navBtn: React.CSSProperties = {
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "50%",
+                    border: "1px solid var(--line)",
+                    background: "var(--white, #fff)",
+                    color: "var(--ink)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  };
+                  return (
+                    <div
+                      className="lightbox-plate"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                        }}
+                      >
+                        <button
+                          onClick={() => jumpLightboxOrder(-1)}
+                          disabled={orderPos <= 0}
+                          style={{ ...navBtn, opacity: orderPos <= 0 ? 0.35 : 1 }}
+                          title={
+                            language === "es"
+                              ? "Orden anterior (Flecha Arriba)"
+                              : "Previous order (Up Arrow)"
+                          }
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <span
+                          style={{
+                            fontSize: "0.82rem",
+                            fontWeight: 600,
+                            textAlign: "center",
+                          }}
+                        >
+                          {language === "es"
+                            ? `Orden ${orderPos + 1} de ${orderIds.length} · Foto ${photoPos + 1} de ${orderPhotos.length}`
+                            : `Order ${orderPos + 1} of ${orderIds.length} · Photo ${photoPos + 1} of ${orderPhotos.length}`}
+                        </span>
+                        <button
+                          onClick={() => jumpLightboxOrder(1)}
+                          disabled={orderPos >= orderIds.length - 1}
+                          style={{
+                            ...navBtn,
+                            opacity: orderPos >= orderIds.length - 1 ? 0.35 : 1,
+                          }}
+                          title={
+                            language === "es"
+                              ? "Orden siguiente (Flecha Abajo)"
+                              : "Next order (Down Arrow)"
+                          }
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                      {orderPhotos.length > 1 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "6px",
+                            overflowX: "auto",
+                            paddingBottom: "2px",
+                          }}
+                        >
+                          {orderPhotos.map((p, i) => (
+                            <button
+                              key={`${p.id}-${i}`}
+                              onClick={() => setActiveLightboxPhoto(p)}
+                              title={p.originalFileName}
+                              style={{
+                                flex: "0 0 auto",
+                                width: "56px",
+                                height: "40px",
+                                padding: 0,
+                                borderRadius: "6px",
+                                overflow: "hidden",
+                                cursor: "pointer",
+                                background: "var(--paper-2)",
+                                border:
+                                  i === photoPos
+                                    ? "2px solid var(--accent, #6366f1)"
+                                    : "1px solid var(--line)",
+                                opacity: i === photoPos ? 1 : 0.7,
+                              }}
+                            >
+                              <img
+                                src={p.thumbnailUrl || p.url}
+                                alt={p.originalFileName}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  display: "block",
+                                }}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <span style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+                        {language === "es"
+                          ? "← → fotos (al terminar pasa a la próxima orden) · ↑ ↓ cambiar de orden"
+                          : "← → photos (continues to the next order) · ↑ ↓ switch order"}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {/* Local Folder Integration Section (Only show if permission is denied and needs action) */}
                 {activeDirName && localSearchStatus === "permission_denied" && (
                   <div

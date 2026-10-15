@@ -406,18 +406,18 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
   let failed = 0;
   
   const chunkSize = 10;
-  const maxDetailedSales = 500;
+  // Caps network detail fetches per load; cached details never count against it.
+  const maxDetailFetches = 500;
+  let detailFetches = 0;
 
   for (let i = 0; i < salesRows.length; i += chunkSize) {
     const chunk = salesRows.slice(i, i + chunkSize);
     const ids = chunk.map((sale) => stringFrom(sale, ["id"], "")).filter(Boolean);
     const cachedSales = await getCachedSales(ids);
 
-    const promises = chunk.map(async (sale, index) => {
-      const globalIndex = i + index;
+    const promises = chunk.map(async (sale) => {
       const id = stringFrom(sale, ["id"], "");
-      
-      if (!id || globalIndex >= maxDetailedSales) {
+      if (!id) {
         return normalizeSale(sale);
       }
 
@@ -426,6 +426,11 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
       if (cached && cached.detailsLoaded) {
         return cached;
       }
+
+      if (detailFetches >= maxDetailFetches) {
+        return normalizeSale(sale);
+      }
+      detailFetches += 1;
 
       try {
         const [detail, photographsRaw] = await Promise.all([

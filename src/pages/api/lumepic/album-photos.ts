@@ -93,7 +93,7 @@ function normalizePhoto(
   };
 }
 
-function normalizePhotoList(
+export function normalizePhotoList(
   value: unknown,
   fallbackAlbum?: { id?: string; title?: string },
 ): AlbumPhoto[] {
@@ -104,7 +104,7 @@ function normalizePhotoList(
     );
 }
 
-function dedupePhotos(photos: AlbumPhoto[]): AlbumPhoto[] {
+export function dedupePhotos(photos: AlbumPhoto[]): AlbumPhoto[] {
   const seen = new Set<string>();
   return photos.filter((photo) => {
     const key =
