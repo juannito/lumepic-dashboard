@@ -27,13 +27,14 @@ export const demoSummary: DashboardSummary = {
     grossRevenue: 10800,
     subtotal: 12600,
     discounts: 1800,
-    fees: 2160,
+    fees: 1620,
+    stripeFee: 540,
     sales: 128,
     orders: 134,
     albums: 19,
     photos: 426,
     publishedPhotos: 5200,
-    avgOrder: 67.5,
+    avgOrder: 84.38,
     conversion: 8.7
   },
   trend: [
@@ -102,6 +103,7 @@ export const demoSummary: DashboardSummary = {
       total: 154,
       grossTotal: 192,
       fees: 38,
+      stripeFee: 9.5,
       isComped: false,
       detailsLoaded: true,
       photographs: []
@@ -120,6 +122,7 @@ export const demoSummary: DashboardSummary = {
       total: 88,
       grossTotal: 110,
       fees: 22,
+      stripeFee: 5.5,
       isComped: false,
       detailsLoaded: true,
       photographs: []
@@ -138,6 +141,7 @@ export const demoSummary: DashboardSummary = {
       total: 132,
       grossTotal: 165,
       fees: 33,
+      stripeFee: 8.25,
       isComped: false,
       detailsLoaded: true,
       photographs: []

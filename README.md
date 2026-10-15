@@ -15,10 +15,11 @@ Crear un archivo `.env.local` en esta carpeta:
 ```bash
 LUMEPIC_PHOTOGRAPHER_TOKEN=tu_token
 LUMEPIC_PHOTOGRAPHER_LABEL=Fotografo 1
-LUMEPIC_API_BASE_URL=https://api.lumepic.com
+LUMEPIC_API_BASE_URL=https://photographer.lumepic.com/api
 ```
 
 El token puede ir con o sin el prefijo `Bearer`; la app lo normaliza antes de llamar a la API.
+No hace falta API key: la app se autentica como el fotógrafo contra `photographer.lumepic.com/api`. Si pones `https://api.lumepic.com` (API de partners, pide `x-api-key`), la app la reemplaza automáticamente.
 
 Para agregar un segundo perfil:
 

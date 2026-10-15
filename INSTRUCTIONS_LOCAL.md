@@ -52,10 +52,10 @@ LUMEPIC_PHOTOGRAPHER_TOKEN_2=tu_segundo_token_aqui
 LUMEPIC_PHOTOGRAPHER_LABEL_2=Fotógrafo Secundario
 
 # URL base de la API (Déjala exactamente como está)
-LUMEPIC_API_BASE_URL=https://api.lumepic.com
+LUMEPIC_API_BASE_URL=https://photographer.lumepic.com/api
 ```
 
-*Nota: No te preocupes si tus tokens tienen la palabra "Bearer" al principio o no, la aplicación se encarga de limpiarlos automáticamente.*
+*Nota: No te preocupes si tus tokens tienen la palabra "Bearer" al principio o no, la aplicación se encarga de limpiarlos automáticamente. No hace falta ninguna API key: con el token del fotógrafo alcanza.*
 
 ### 🔍 ¿Cómo conseguir tu Token de Lumepic usando tu navegador?
 Si no sabes dónde encontrar tu token de fotógrafo, puedes extraerlo fácilmente de tu dashboard de fotógrafo en Lumepic siguiendo estos pasos desde tu navegador (como Google Chrome o Edge):

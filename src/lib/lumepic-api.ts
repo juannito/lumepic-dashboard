@@ -14,7 +14,17 @@ import type {
   SalesPoint
 } from "./lumepic-types";
 
-const API_BASE_URL = process.env.LUMEPIC_API_BASE_URL || "https://api.lumepic.com";
+const DEFAULT_API_BASE_URL = "https://photographer.lumepic.com/api";
+
+// The photographer Bearer token only works against the photographer SPA API.
+// api.lumepic.com is the partner API (requires x-api-key), so remap it.
+function resolveApiBaseUrl(value: string | undefined) {
+  const base = value?.trim().replace(/\/+$/, "");
+  if (!base || /^https?:\/\/api\.lumepic\.com$/i.test(base)) return DEFAULT_API_BASE_URL;
+  return base;
+}
+
+export const LUMEPIC_API_BASE_URL = resolveApiBaseUrl(process.env.LUMEPIC_API_BASE_URL);
 const PROFILE_COLORS = ["#dceeb1", "#c5b0f4", "#efd4d4", "#c8e6cd", "#f3c9b6"];
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -136,6 +146,14 @@ function normalizeToken(token: string) {
   return token.replace(/^Bearer\s+/i, "").trim();
 }
 
+export function getLumepicAuthHeaders(token: string, extraHeaders: Record<string, string> = {}) {
+  return {
+    Authorization: `Bearer ${normalizeToken(token)}`,
+    Accept: "application/json",
+    ...extraHeaders
+  };
+}
+
 function slugify(value: string, fallback: string) {
   const slug = value
     .toLowerCase()
@@ -193,16 +211,28 @@ export async function lumepicFetch(path: string, token: string, bypassCache = fa
     if (cached && cached.expiresAt > Date.now()) return cached.value;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Authorization: `Bearer ${normalizeToken(token)}`,
-      Accept: "application/json"
-    },
+  const response = await fetch(`${LUMEPIC_API_BASE_URL}${path}`, {
+    headers: getLumepicAuthHeaders(token),
     cache: "no-store"
   });
 
   if (!response.ok) {
-    throw new Error(`${path} returned ${response.status}`);
+    const errorText = await response.text();
+    const parsedError = (() => {
+      try {
+        return JSON.parse(errorText) as { message?: string; error?: string };
+      } catch {
+        return null;
+      }
+    })();
+
+    const apiMessage = parsedError?.message || parsedError?.error || errorText.trim();
+    const helpText =
+      response.status === 401 || response.status === 403
+        ? " Revisa que LUMEPIC_PHOTOGRAPHER_TOKEN sea un token vigente del panel de fotógrafo."
+        : "";
+
+    throw new Error(`${path} returned ${response.status}${apiMessage ? `: ${apiMessage}` : ""}.${helpText}`);
   }
 
   const value = (await response.json()) as unknown;
@@ -210,6 +240,29 @@ export async function lumepicFetch(path: string, token: string, bypassCache = fa
     lumepicCache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   }
   return value;
+}
+
+export async function fetchAllAlbums(token: string, bypassCache = false): Promise<any[]> {
+  let allAlbums: any[] = [];
+  const limit = 50;
+  let skip = 0;
+  let hasMore = true;
+  let safetyCount = 0;
+
+  while (hasMore && safetyCount < 20) {
+    safetyCount++;
+    const path = `/albums?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=${skip}&order%5Bfield%5D=CREATED_AT&order%5Bsort%5D=DESC`;
+    const res = await lumepicFetch(path, token, bypassCache);
+    const albums = arrayFrom(res);
+    allAlbums = allAlbums.concat(albums);
+    
+    if (albums.length < limit) {
+      hasMore = false;
+    } else {
+      skip += limit;
+    }
+  }
+  return allAlbums;
 }
 
 function extractBuyerInfo(
@@ -308,6 +361,10 @@ function normalizeDetailedSale(
     .flatMap((payment) => arrayFrom(payment.fees))
     .filter((fee) => relevantLineItemIds.has(stringFrom(fee, ["lineItemId"], "")))
     .reduce((sum, fee) => sum + numberFrom(fee, ["amount"], 0), 0);
+  const stripeFee = payments
+    .flatMap((payment) => arrayFrom(payment.fees))
+    .filter((fee) => relevantLineItemIds.has(stringFrom(fee, ["lineItemId"], "")) && stringFrom(fee, ["type"], "") === "stripe_fee")
+    .reduce((sum, fee) => sum + numberFrom(fee, ["amount"], 0), 0);
   const firstLineItem = relevantLineItems[0] || asRecord(record);
   const firstAlbum = asRecord(firstLineItem.album || record.album);
   const firstEvent = asRecord(nestedValue(firstAlbum, "event"));
@@ -337,6 +394,7 @@ function normalizeDetailedSale(
     total: Math.max(grossTotal - fees, 0),
     grossTotal,
     fees,
+    stripeFee,
     isComped,
     detailsLoaded: true,
     photographs
@@ -348,18 +406,18 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
   let failed = 0;
   
   const chunkSize = 10;
-  const maxDetailedSales = 500;
+  // Caps network detail fetches per load; cached details never count against it.
+  const maxDetailFetches = 500;
+  let detailFetches = 0;
 
   for (let i = 0; i < salesRows.length; i += chunkSize) {
     const chunk = salesRows.slice(i, i + chunkSize);
     const ids = chunk.map((sale) => stringFrom(sale, ["id"], "")).filter(Boolean);
     const cachedSales = await getCachedSales(ids);
 
-    const promises = chunk.map(async (sale, index) => {
-      const globalIndex = i + index;
+    const promises = chunk.map(async (sale) => {
       const id = stringFrom(sale, ["id"], "");
-      
-      if (!id || globalIndex >= maxDetailedSales) {
+      if (!id) {
         return normalizeSale(sale);
       }
 
@@ -368,6 +426,11 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
       if (cached && cached.detailsLoaded) {
         return cached;
       }
+
+      if (detailFetches >= maxDetailFetches) {
+        return normalizeSale(sale);
+      }
+      detailFetches += 1;
 
       try {
         const [detail, photographsRaw] = await Promise.all([
@@ -394,13 +457,20 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
   return { details, failed };
 }
 
-function applyEstimatedFees(sales: Sale[], feeRate: number) {
+function applyEstimatedFees(sales: Sale[], feeRate: number, stripeFeeRate: number) {
   return sales.map((sale) => {
-    if (sale.isComped || sale.fees > 0) return sale;
+    if (sale.isComped || sale.fees > 0) {
+      if (sale.stripeFee === undefined) {
+        sale.stripeFee = sale.isComped ? 0 : Number((sale.fees * 0.25).toFixed(2));
+      }
+      return sale;
+    }
     const fees = sale.grossTotal * feeRate;
+    const stripeFee = sale.grossTotal * stripeFeeRate;
     return {
       ...sale,
       fees,
+      stripeFee,
       total: Math.max(sale.grossTotal - fees, 0)
     };
   });
@@ -520,7 +590,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const [salesRaw, albumsRaw, activityRaw, insightsRaw, publishedRaw, metricsRaw, profileRaw] =
       await Promise.all([
         lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token, bypassCache),
-        lumepicFetch("/albums?pagination%5Blimit%5D=20&pagination%5Bskip%5D=0&order%5Bfield%5D=CREATED_AT&order%5Bsort%5D=DESC", token, bypassCache),
+        fetchAllAlbums(token, bypassCache),
         lumepicFetch("/dashboard/photographer/sales-by-activity", token, bypassCache),
         lumepicFetch("/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=9&pagination%5Bskip%5D=0", token, bypassCache),
         lumepicFetch("/dashboard/photographer/published-albums", token, bypassCache),
@@ -592,7 +662,20 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
           { fees: 0, gross: 0 }
         );
     const feeRate = observedFeeRate.gross ? observedFeeRate.fees / observedFeeRate.gross : 0.2;
-    const detailedSales = applyEstimatedFees(detailResult.details, feeRate);
+
+    const observedStripeFeeRate =
+      detailResult.details
+        .filter((sale) => sale.grossTotal > 0 && sale.stripeFee && sale.stripeFee > 0)
+        .reduce(
+          (acc, sale) => ({
+            stripeFees: acc.stripeFees + (sale.stripeFee || 0),
+            gross: acc.gross + sale.grossTotal
+          }),
+          { stripeFees: 0, gross: 0 }
+        );
+    const stripeFeeRate = observedStripeFeeRate.gross ? observedStripeFeeRate.stripeFees / observedStripeFeeRate.gross : 0.04;
+
+    const detailedSales = applyEstimatedFees(detailResult.details, feeRate, stripeFeeRate);
     const paidSales = detailedSales.filter((sale) => !sale.isComped && sale.grossTotal > 0);
     const activities = normalizeActivities(activityRaw, paidSales);
     const published = asRecord(publishedRaw);
@@ -620,6 +703,9 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
       albums.reduce((sum, album) => sum + album.photos, 0);
     const conversion = numberFrom(metrics, ["rating"], 0) * 100 || (publishedPhotos ? (photos / publishedPhotos) * 100 : 0);
 
+    const totalStripeFee = paidSales.reduce((sum, sale) => sum + (sale.stripeFee || 0), 0);
+    const adjustedFees = Math.max(fees - totalStripeFee, 0);
+
     return {
       id: config.id,
       label: config.label,
@@ -633,13 +719,14 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         grossRevenue,
         subtotal,
         discounts,
-        fees,
+        fees: adjustedFees,
+        stripeFee: totalStripeFee,
         sales: numberFrom(metrics, ["salesCount"], paidSales.length),
         orders: numberFrom(asRecord(salesRaw), ["count"], detailedSales.length),
         albums: numberFrom(metrics, ["albumsCount"], nestedNumber(published, ["published", "count", "total"], albums.length)),
         publishedPhotos,
         photos,
-        avgOrder: numberFrom(metrics, ["averageTicket"], paidSales.length ? grossRevenue / paidSales.length : 0),
+        avgOrder: paidSales.length ? grossRevenue / paidSales.length : 0,
         conversion
       },
       trend: buildTrend(paidSales),
@@ -670,6 +757,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         subtotal: 0,
         discounts: 0,
         fees: 0,
+        stripeFee: 0,
         sales: 0,
         orders: 0,
         albums: 0,
@@ -745,6 +833,7 @@ function buildConsolidatedSummary(profiles: DashboardSummary[]): ConsolidatedSum
       acc.subtotal += profile.totals.subtotal;
       acc.discounts += profile.totals.discounts;
       acc.fees += profile.totals.fees;
+      acc.stripeFee = (acc.stripeFee || 0) + (profile.totals.stripeFee || 0);
       acc.sales += profile.totals.sales;
       acc.orders += profile.totals.orders;
       acc.albums += profile.totals.albums;
@@ -758,6 +847,7 @@ function buildConsolidatedSummary(profiles: DashboardSummary[]): ConsolidatedSum
       subtotal: 0,
       discounts: 0,
       fees: 0,
+      stripeFee: 0,
       sales: 0,
       orders: 0,
       albums: 0,
