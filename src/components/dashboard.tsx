@@ -3305,18 +3305,22 @@ function ProfileDashboard({
 }) {
   const [metric, setMetric] = useState<"revenue" | "photos">("revenue");
   const [selectedAlbum, setSelectedAlbum] = useState<string>("all");
+  const [salesPurchaseType, setSalesPurchaseType] = useState<
+    "all" | "paid" | "free"
+  >("all");
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const t = TRANSLATIONS[language];
 
   useEffect(() => {
     setSelectedAlbum("all");
+    setSalesPurchaseType("all");
     setCurrentPage(1);
   }, [summary.id]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedAlbum]);
+  }, [selectedAlbum, salesPurchaseType]);
 
   const uniqueAlbums = useMemo(() => {
     const albums = new Set<string>();
@@ -3326,10 +3330,19 @@ function ProfileDashboard({
     return Array.from(albums).sort();
   }, [summary.sales]);
 
+  const freeSalesCount = useMemo(
+    () => summary.sales.filter((sale) => sale.isComped).length,
+    [summary.sales],
+  );
+
   const filteredSales = useMemo(() => {
-    if (selectedAlbum === "all") return summary.sales;
-    return summary.sales.filter((sale) => sale.album === selectedAlbum);
-  }, [summary.sales, selectedAlbum]);
+    return summary.sales.filter((sale) => {
+      if (selectedAlbum !== "all" && sale.album !== selectedAlbum) return false;
+      if (salesPurchaseType === "free") return sale.isComped;
+      if (salesPurchaseType === "paid") return !sale.isComped;
+      return true;
+    });
+  }, [summary.sales, selectedAlbum, salesPurchaseType]);
 
   const totalPages = Math.ceil(filteredSales.length / pageSize);
   const paginatedSales = useMemo(() => {
@@ -3863,6 +3876,40 @@ function ProfileDashboard({
                   ))}
                 </select>
               )}
+              <select
+                value={salesPurchaseType}
+                onChange={(e) =>
+                  setSalesPurchaseType(e.target.value as "all" | "paid" | "free")
+                }
+                style={{
+                  height: "32px",
+                  padding: "0 10px",
+                  border: "1px solid var(--line)",
+                  borderRadius: "8px",
+                  background: "var(--white)",
+                  fontSize: "0.82rem",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+                aria-label={
+                  language === "es"
+                    ? "Filtrar ventas por tipo de compra"
+                    : "Filter sales by purchase type"
+                }
+              >
+                <option value="all">
+                  {language === "es" ? "Todas las órdenes" : "All orders"}
+                </option>
+                <option value="paid">
+                  {language === "es" ? "Sólo pagas" : "Paid only"}
+                </option>
+                <option value="free">
+                  {language === "es"
+                    ? `Sólo Free (${freeSalesCount})`
+                    : `Free only (${freeSalesCount})`}
+                </option>
+              </select>
               <ShoppingBag size={21} />
             </div>
           </header>
@@ -6325,6 +6372,16 @@ function GalleryDashboard({
     return options.sort((a, b) => a.label.localeCompare(b.label));
   }, [allPhotos, customEvents, albumMap]);
 
+  const freeOrderCount = useMemo(
+    () =>
+      new Set(
+        allPhotos
+          .filter((item) => item.sale.isComped)
+          .map((item) => `${item.profileId}:${item.sale.id}`),
+      ).size,
+    [allPhotos],
+  );
+
   const activeRace =
     raceOptions.find((option) => option.value === selectedRace) || null;
 
@@ -6866,8 +6923,8 @@ function GalleryDashboard({
                 </option>
                 <option value="comped">
                   {language === "es"
-                    ? "Sólo Lumepic (Bonificadas)"
-                    : "Lumepic Only (Comped)"}
+                    ? `Sólo Free (${freeOrderCount})`
+                    : `Free only (${freeOrderCount})`}
                 </option>
               </select>
             </div>
