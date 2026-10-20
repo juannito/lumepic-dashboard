@@ -265,6 +265,29 @@ export async function fetchAllAlbums(token: string, bypassCache = false): Promis
   return allAlbums;
 }
 
+export async function fetchAllAlbumInsights(token: string, bypassCache = false): Promise<any[]> {
+  let allInsights: any[] = [];
+  const limit = 50;
+  let skip = 0;
+  let hasMore = true;
+  let safetyCount = 0;
+
+  while (hasMore && safetyCount < 20) {
+    safetyCount++;
+    const path = `/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=${skip}`;
+    const res = await lumepicFetch(path, token, bypassCache);
+    const insights = arrayFrom(res);
+    allInsights = allInsights.concat(insights);
+
+    if (insights.length < limit) {
+      hasMore = false;
+    } else {
+      skip += limit;
+    }
+  }
+  return allInsights;
+}
+
 function extractBuyerInfo(
   record: AnyRecord,
   summaryRecord?: AnyRecord,
@@ -592,7 +615,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token, bypassCache),
         fetchAllAlbums(token, bypassCache),
         lumepicFetch("/dashboard/photographer/sales-by-activity", token, bypassCache),
-        lumepicFetch("/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=9&pagination%5Bskip%5D=0", token, bypassCache),
+        fetchAllAlbumInsights(token, bypassCache),
         lumepicFetch("/dashboard/photographer/published-albums", token, bypassCache),
         lumepicFetch("/dashboard/photographer/metrics", token, bypassCache),
         lumepicFetch("/users/profile", token, bypassCache)
@@ -613,7 +636,11 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
 
     const albumInsights = arrayFrom(insightsRaw).map(normalizeAlbum);
     const albumFallbacks = rawAlbumsItems.map(normalizeAlbum);
-    let albums = albumInsights.length ? albumInsights : albumFallbacks;
+    const insightIds = new Set(albumInsights.map((album) => album.id));
+    let albums = [
+      ...albumInsights,
+      ...albumFallbacks.filter((album) => !insightIds.has(album.id))
+    ];
 
     try {
       const albumMetricsPromises = albums.map(async (album) => {
