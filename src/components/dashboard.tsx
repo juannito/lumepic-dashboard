@@ -3177,7 +3177,10 @@ function ConsolidatedDashboard({
         </div>
       </section>
 
-      <section className="sales-section" style={{ marginTop: "24px" }}>
+      <section
+        className="sales-section"
+        style={{ marginTop: "24px", gridTemplateColumns: "minmax(0, 1fr)" }}
+      >
         <article className="panel">
           <header className="table-toolbar">
             <div>
