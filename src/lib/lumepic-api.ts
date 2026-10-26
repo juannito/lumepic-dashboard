@@ -626,11 +626,17 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const salesRows = arrayFrom(salesRaw);
     const rawAlbumsItems = arrayFrom(albumsRaw);
     const albumEventIdMap = new Map<string, string>();
+    // The insights endpoint has no createdAt, so publication dates come from the albums list.
+    const albumPublishedAtMap = new Map<string, string>();
     rawAlbumsItems.forEach(item => {
       const albumId = stringFrom(item, ["id"], "");
       const eventId = stringFrom(item, ["eventId"], "") || stringFrom(asRecord(item.event), ["id"], "");
       if (albumId && eventId) {
         albumEventIdMap.set(albumId, eventId);
+      }
+      const publishedAt = stringFrom(item, ["createdAt", "created_at"], "");
+      if (albumId && publishedAt) {
+        albumPublishedAtMap.set(albumId, publishedAt);
       }
     });
 
@@ -640,7 +646,10 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     let albums = [
       ...albumInsights,
       ...albumFallbacks.filter((album) => !insightIds.has(album.id))
-    ];
+    ].map((album) => ({
+      ...album,
+      publishedAt: albumPublishedAtMap.get(album.id) || album.createdAt
+    }));
 
     try {
       const albumMetricsPromises = albums.map(async (album) => {
