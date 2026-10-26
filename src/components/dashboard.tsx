@@ -3263,7 +3263,308 @@ function ConsolidatedDashboard({
           </div>
         </article>
       </section>
+
+      <SalesCohortTable allProfiles={allProfiles} language={language} />
     </>
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const COHORT_MONTHS = 12;
+
+// Same day-of-month N months later, clamped to the last day of shorter months.
+function addMonthsUtc(date: Date, months: number): Date {
+  const target = new Date(date.getTime());
+  const day = target.getUTCDate();
+  target.setUTCDate(1);
+  target.setUTCMonth(target.getUTCMonth() + months);
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target;
+}
+
+// Bucket starts relative to publication: [week 1, weeks 2-4, month 2 ... month 12, end].
+function cohortBoundaries(published: Date): number[] {
+  const bounds = [published.getTime(), published.getTime() + 7 * DAY_MS];
+  for (let month = 1; month <= COHORT_MONTHS; month += 1) {
+    bounds.push(addMonthsUtc(published, month).getTime());
+  }
+  return bounds;
+}
+
+type CohortRow = {
+  id: string;
+  title: string;
+  publishedAt: string;
+  buckets: number[];
+  elapsed: boolean[];
+  total: number;
+};
+
+function SalesCohortTable({
+  allProfiles,
+  language = "en",
+}: {
+  allProfiles: DashboardSummary[];
+  language?: Language;
+}) {
+  const [mode, setMode] = useState<"photos" | "share">("photos");
+  const isEs = language === "es";
+  const bucketCount = COHORT_MONTHS + 1;
+  const bucketLabels = [
+    isEs ? "Sem 1" : "Week 1",
+    isEs ? "Sem 2–4" : "Weeks 2–4",
+    ...Array.from({ length: COHORT_MONTHS - 1 }, (_, i) =>
+      isEs ? `Mes ${i + 2}` : `Month ${i + 2}`,
+    ),
+  ];
+
+  const rows = useMemo<CohortRow[]>(() => {
+    const albums = new Map<string, { title: string; publishedAt: string }>();
+    allProfiles.forEach((profile) => {
+      profile.albums.forEach((album) => {
+        if (!albums.has(album.id)) {
+          albums.set(album.id, {
+            title: album.title,
+            publishedAt: album.publishedAt || album.createdAt,
+          });
+        }
+      });
+    });
+
+    const photosByAlbum = new Map<string, { time: number; photos: number }[]>();
+    const addPhotos = (albumId: string, time: number, photos: number) => {
+      if (!albums.has(albumId) || photos <= 0) return;
+      const list = photosByAlbum.get(albumId) || [];
+      list.push({ time, photos });
+      photosByAlbum.set(albumId, list);
+    };
+
+    allProfiles.forEach((profile) => {
+      profile.sales.forEach((sale) => {
+        if (sale.isComped) return;
+        const time = new Date(sale.date).getTime();
+        if (isNaN(time)) return;
+
+        const albumIds = new Set(
+          sale.photographs.map((photo) => photo.albumId).filter(Boolean),
+        );
+        if (albumIds.size === 1) {
+          addPhotos([...albumIds][0], time, sale.photos);
+        } else if (albumIds.size > 1) {
+          sale.photographs.forEach((photo) =>
+            addPhotos(photo.albumId, time, 1),
+          );
+        } else {
+          const album = profile.albums.find((item) =>
+            isAlbumMatch(sale.album, item.title),
+          );
+          if (album) addPhotos(album.id, time, sale.photos);
+        }
+      });
+    });
+
+    const now = Date.now();
+    const result: CohortRow[] = [];
+    albums.forEach((album, id) => {
+      const published = new Date(album.publishedAt);
+      if (isNaN(published.getTime())) return;
+      const bounds = cohortBoundaries(published);
+      const buckets = new Array<number>(bucketCount).fill(0);
+      (photosByAlbum.get(id) || []).forEach(({ time, photos }) => {
+        // Sales stamped slightly before publication still belong to week 1.
+        if (time < bounds[1]) {
+          buckets[0] += photos;
+          return;
+        }
+        for (let i = 1; i < bucketCount; i += 1) {
+          if (time < bounds[i + 1]) {
+            buckets[i] += photos;
+            return;
+          }
+        }
+      });
+      const total = buckets.reduce((sum, value) => sum + value, 0);
+      if (!total) return;
+      result.push({
+        id,
+        title: album.title,
+        publishedAt: album.publishedAt,
+        buckets,
+        elapsed: bounds.slice(0, bucketCount).map((start) => start <= now),
+        total,
+      });
+    });
+
+    return result.sort(
+      (a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+    );
+  }, [allProfiles, bucketCount]);
+
+  const columnTotals = useMemo(() => {
+    const totals = new Array<number>(bucketCount).fill(0);
+    rows.forEach((row) =>
+      row.buckets.forEach((value, i) => {
+        totals[i] += value;
+      }),
+    );
+    return totals;
+  }, [rows, bucketCount]);
+  const grandTotal = columnTotals.reduce((sum, value) => sum + value, 0);
+
+  const formatCell = (value: number, total: number) => {
+    if (mode === "share") {
+      return total ? `${((value / total) * 100).toFixed(1)}%` : "—";
+    }
+    return compact.format(value);
+  };
+
+  const pillStyle = (active: boolean) => ({
+    height: "28px",
+    padding: "0 12px",
+    border: "none",
+    borderRadius: "999px",
+    background: active ? "var(--ink)" : "transparent",
+    color: active ? "var(--white)" : "var(--ink)",
+    fontSize: "0.78rem",
+    fontWeight: "600",
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  });
+
+  return (
+    <section
+      className="sales-section"
+      style={{ marginTop: "24px", gridTemplateColumns: "minmax(0, 1fr)" }}
+    >
+      <article className="panel">
+        <header className="table-toolbar">
+          <div>
+            <h2>
+              {isEs
+                ? "Fotos vendidas desde la publicación"
+                : "Photos sold since publication"}
+            </h2>
+            <p>
+              {isEs
+                ? "Fotos pagas vendidas por evento en cada período desde que se publicó el álbum. Los meses son calendario desde la fecha de publicación; · = período que todavía no llegó."
+                : "Paid photos sold per event in each period since the album was published. Months are calendar months from the publication date; · = period not reached yet."}
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "4px",
+                background: "var(--paper-2)",
+                padding: "4px",
+                borderRadius: "999px",
+                border: "1px solid var(--line)",
+              }}
+            >
+              <button
+                className={`filter-pill ${mode === "photos" ? "active" : ""}`}
+                style={pillStyle(mode === "photos")}
+                onClick={() => setMode("photos")}
+              >
+                {isEs ? "Fotos" : "Photos"}
+              </button>
+              <button
+                className={`filter-pill ${mode === "share" ? "active" : ""}`}
+                style={pillStyle(mode === "share")}
+                onClick={() => setMode("share")}
+              >
+                % {isEs ? "del total" : "of total"}
+              </button>
+            </div>
+            <Calendar size={21} />
+          </div>
+        </header>
+        <div className="table-wrap">
+          <table style={{ minWidth: "1400px" }}>
+            <thead>
+              <tr>
+                <th>{isEs ? "Evento" : "Event"}</th>
+                <th>{isEs ? "Publicado" : "Published"}</th>
+                {bucketLabels.map((label) => (
+                  <th key={label} style={{ textAlign: "right" }}>
+                    {label}
+                  </th>
+                ))}
+                <th style={{ textAlign: "right" }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td data-label={isEs ? "Evento" : "Event"}>
+                    <strong>{row.title}</strong>
+                  </td>
+                  <td data-label={isEs ? "Publicado" : "Published"}>
+                    {formatDateOnly(row.publishedAt, language)}
+                  </td>
+                  {row.buckets.map((value, i) => (
+                    <td
+                      key={bucketLabels[i]}
+                      data-label={bucketLabels[i]}
+                      style={{
+                        textAlign: "right",
+                        color:
+                          !row.elapsed[i] || value === 0
+                            ? "var(--muted)"
+                            : undefined,
+                      }}
+                    >
+                      {row.elapsed[i] ? formatCell(value, row.total) : "·"}
+                    </td>
+                  ))}
+                  <td data-label="Total" style={{ textAlign: "right" }}>
+                    <strong>{compact.format(row.total)}</strong>
+                  </td>
+                </tr>
+              ))}
+              {rows.length > 0 && (
+                <tr>
+                  <td data-label={isEs ? "Evento" : "Event"}>
+                    <strong>Total</strong>
+                  </td>
+                  <td />
+                  {columnTotals.map((value, i) => (
+                    <td
+                      key={bucketLabels[i]}
+                      data-label={bucketLabels[i]}
+                      style={{ textAlign: "right" }}
+                    >
+                      <strong>{formatCell(value, grandTotal)}</strong>
+                    </td>
+                  ))}
+                  <td data-label="Total" style={{ textAlign: "right" }}>
+                    <strong>{compact.format(grandTotal)}</strong>
+                  </td>
+                </tr>
+              )}
+              {rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={bucketCount + 3}
+                    style={{
+                      textAlign: "center",
+                      color: "var(--muted)",
+                      padding: "20px",
+                    }}
+                  >
+                    {isEs ? "Sin ventas para mostrar." : "No sales to show."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
   );
 }
 

@@ -22,6 +22,7 @@ export type AlbumInsight = {
   id: string;
   title: string;
   createdAt: string;
+  publishedAt?: string;
   views: number;
   photos: number;
   soldPhotos: number;
