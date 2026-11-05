@@ -265,27 +265,11 @@ export async function fetchAllAlbums(token: string, bypassCache = false): Promis
   return allAlbums;
 }
 
-export async function fetchAllAlbumInsights(token: string, bypassCache = false): Promise<any[]> {
-  let allInsights: any[] = [];
-  const limit = 50;
-  let skip = 0;
-  let hasMore = true;
-  let safetyCount = 0;
-
-  while (hasMore && safetyCount < 20) {
-    safetyCount++;
-    const path = `/dashboard/photographer/albums/insights?order%5B0%5D%5Bfield%5D=CREATED_AT&order%5B0%5D%5Bsort%5D=DESC&pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=${skip}`;
-    const res = await lumepicFetch(path, token, bypassCache);
-    const insights = arrayFrom(res);
-    allInsights = allInsights.concat(insights);
-
-    if (insights.length < limit) {
-      hasMore = false;
-    } else {
-      skip += limit;
-    }
-  }
-  return allInsights;
+// /dashboard/photographer/stats replaces the decommissioned metrics, insights and
+// sales-by-activity endpoints. Without a date range it returns all-time totals.
+function fetchPhotographerStats(token: string, bypassCache = false, albumId?: string) {
+  const albumFilter = albumId ? `&albumId=${encodeURIComponent(albumId)}` : "";
+  return lumepicFetch(`/dashboard/photographer/stats?currency=usd${albumFilter}`, token, bypassCache);
 }
 
 function extractBuyerInfo(
@@ -610,14 +594,11 @@ function normalizeProfile(value: unknown) {
 async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number = 500, bypassCache = false): Promise<DashboardSummary> {
   try {
     const token = config.token;
-    const [salesRaw, albumsRaw, activityRaw, insightsRaw, publishedRaw, metricsRaw, profileRaw] =
+    const [salesRaw, albumsRaw, statsRaw, profileRaw] =
       await Promise.all([
         lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token, bypassCache),
         fetchAllAlbums(token, bypassCache),
-        lumepicFetch("/dashboard/photographer/sales-by-activity", token, bypassCache),
-        fetchAllAlbumInsights(token, bypassCache),
-        lumepicFetch("/dashboard/photographer/published-albums", token, bypassCache),
-        lumepicFetch("/dashboard/photographer/metrics", token, bypassCache),
+        fetchPhotographerStats(token, bypassCache),
         lumepicFetch("/users/profile", token, bypassCache)
       ]);
 
@@ -626,7 +607,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const salesRows = arrayFrom(salesRaw);
     const rawAlbumsItems = arrayFrom(albumsRaw);
     const albumEventIdMap = new Map<string, string>();
-    // The insights endpoint has no createdAt, so publication dates come from the albums list.
+    // Publication dates come from the albums list (createdAt).
     const albumPublishedAtMap = new Map<string, string>();
     rawAlbumsItems.forEach(item => {
       const albumId = stringFrom(item, ["id"], "");
@@ -640,48 +621,33 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
       }
     });
 
-    const albumInsights = arrayFrom(insightsRaw).map(normalizeAlbum);
-    const albumFallbacks = rawAlbumsItems.map(normalizeAlbum);
-    const insightIds = new Set(albumInsights.map((album) => album.id));
-    let albums = [
-      ...albumInsights,
-      ...albumFallbacks.filter((album) => !insightIds.has(album.id))
-    ].map((album) => ({
+    let albums = rawAlbumsItems.map(normalizeAlbum).map((album) => ({
       ...album,
-      publishedAt: albumPublishedAtMap.get(album.id) || album.createdAt
+      publishedAt: albumPublishedAtMap.get(album.id) || album.createdAt,
+      eventId: albumEventIdMap.get(album.id) || ""
     }));
 
-    try {
-      const albumMetricsPromises = albums.map(async (album) => {
-        const eventId = albumEventIdMap.get(album.id);
-        if (eventId) {
-          try {
-            const metrics = await lumepicFetch(`/dashboard/photographer/metrics?eventId=${eventId}`, token, bypassCache);
-            const earnings = asRecord(asRecord(metrics).earnings);
-            const netRevenue = numberFrom(earnings, ["totalEarningsInUsd", "usd"], 0);
-            return { albumId: album.id, netRevenue, eventId };
-          } catch (e) {
-            console.error(`Error fetching metrics for event ${eventId}:`, e);
-          }
+    albums = await Promise.all(
+      albums.map(async (album) => {
+        try {
+          const stats = asRecord(await fetchPhotographerStats(token, bypassCache, album.id));
+          const photos = numberFrom(stats, ["photosUploadedCount"], album.photos);
+          const soldPhotos = numberFrom(stats, ["photosSoldCount"], album.soldPhotos);
+          return {
+            ...album,
+            photos,
+            soldPhotos,
+            sales: numberFrom(stats, ["salesCount"], album.sales),
+            views: numberFrom(stats, ["visitsCount"], album.views),
+            netRevenue: numberFrom(stats, ["netIncome"], 0),
+            conversion: photos ? (soldPhotos / photos) * 100 : album.conversion
+          };
+        } catch (e) {
+          console.error(`Error fetching stats for album ${album.id}:`, e);
+          return { ...album, netRevenue: 0 };
         }
-        return { albumId: album.id, netRevenue: 0, eventId: "" };
-      });
-      const albumMetricsResults = await Promise.all(albumMetricsPromises);
-      const albumNetRevenueMap = new Map<string, number>();
-      const albumEventMap = new Map<string, string>();
-      albumMetricsResults.forEach(res => {
-        albumNetRevenueMap.set(res.albumId, res.netRevenue);
-        if (res.eventId) albumEventMap.set(res.albumId, res.eventId);
-      });
-
-      albums = albums.map(album => ({
-        ...album,
-        netRevenue: albumNetRevenueMap.get(album.id) || 0,
-        eventId: albumEventMap.get(album.id) || ""
-      }));
-    } catch (caught) {
-      console.error("Error fetching album metrics:", caught);
-    }
+      })
+    );
 
     const detailResult = sellerId
       ? await settleDetailedSales(salesRows, token, sellerId, bypassCache)
@@ -712,15 +678,19 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const stripeFeeRate = observedStripeFeeRate.gross ? observedStripeFeeRate.stripeFees / observedStripeFeeRate.gross : 0.04;
 
     const detailedSales = applyEstimatedFees(detailResult.details, feeRate, stripeFeeRate);
+    // Stats only reports net income per album; estimate gross with the observed fee rate.
+    albums = albums.map((album) => ({
+      ...album,
+      revenue: album.revenue || (feeRate < 1 ? (album.netRevenue || 0) / (1 - feeRate) : 0)
+    }));
     const paidSales = detailedSales.filter((sale) => !sale.isComped && sale.grossTotal > 0);
-    const activities = normalizeActivities(activityRaw, paidSales);
-    const published = asRecord(publishedRaw);
-    const metrics = asRecord(metricsRaw);
-    const earnings = asRecord(metrics.earnings);
+    const activities = normalizeActivities(null, paidSales);
+    const stats = asRecord(statsRaw);
+    // Album estimates cover all-time sales; the sales list is capped by `limit`.
     const grossRevenue =
-      activities.reduce((sum, activity) => sum + activity.revenue, 0) ||
+      albums.reduce((sum, album) => sum + album.revenue, 0) ||
       paidSales.reduce((sum, sale) => sum + sale.grossTotal, 0);
-    const revenue = nestedNumber(earnings, ["totalEarningsInUsd", "earningsByCurrency.usd"], Math.max(grossRevenue - paidSales.reduce((sum, sale) => sum + sale.fees, 0), 0));
+    const revenue = numberFrom(stats, ["netIncome"], Math.max(grossRevenue - paidSales.reduce((sum, sale) => sum + sale.fees, 0), 0));
     const fees = Math.max(grossRevenue - revenue, 0);
     const loadedPaidSales = paidSales.filter((sale) => sale.detailsLoaded);
     const loadedGross = loadedPaidSales.reduce((sum, sale) => sum + sale.grossTotal, 0);
@@ -731,14 +701,15 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const discounts = loadedDiscounts + estimatedMissingDiscounts;
     const subtotal = grossRevenue + discounts;
     const photos =
-      numberFrom(metrics, ["numberOfSoldPhotographs"], 0) ||
+      numberFrom(stats, ["photosSoldCount"], 0) ||
       albums.reduce((sum, album) => sum + album.soldPhotos, 0) ||
       paidSales.reduce((sum, sale) => sum + sale.photos, 0);
     const publishedPhotos =
-      numberFrom(metrics, ["numberOfUploadedPhotographs"], 0) ||
+      numberFrom(stats, ["photosUploadedCount"], 0) ||
       albums.reduce((sum, album) => sum + album.photos, 0);
-    const conversion = numberFrom(metrics, ["rating"], 0) * 100 || (publishedPhotos ? (photos / publishedPhotos) * 100 : 0);
+    const conversion = publishedPhotos ? (photos / publishedPhotos) * 100 : 0;
 
+    const salesCount = numberFrom(stats, ["salesCount"], paidSales.length);
     const totalStripeFee = paidSales.reduce((sum, sale) => sum + (sale.stripeFee || 0), 0);
     const adjustedFees = Math.max(fees - totalStripeFee, 0);
 
@@ -757,12 +728,12 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
         discounts,
         fees: adjustedFees,
         stripeFee: totalStripeFee,
-        sales: numberFrom(metrics, ["salesCount"], paidSales.length),
+        sales: salesCount,
         orders: numberFrom(asRecord(salesRaw), ["count"], detailedSales.length),
-        albums: numberFrom(metrics, ["albumsCount"], nestedNumber(published, ["published", "count", "total"], albums.length)),
+        albums: numberFrom(stats, ["albumsCount"], albums.length),
         publishedPhotos,
         photos,
-        avgOrder: paidSales.length ? grossRevenue / paidSales.length : 0,
+        avgOrder: salesCount ? grossRevenue / salesCount : 0,
         conversion
       },
       trend: buildTrend(paidSales),
