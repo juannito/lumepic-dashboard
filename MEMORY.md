@@ -1,5 +1,12 @@
 # Lumepic Project Memory
 
+## 2026-11-21 - Vista "Mis eventos Lumepic"
+
+- `src/components/dashboard.tsx`: nuevo `LumepicEventsDashboard`, vista `lumepic-events` (agregada al switcher, al guard de `activeView`, sidebar y render).
+- Tabla de eventos = `profiles[].albums` con `album.photos` como cantidad. Click en fila -> lista de fotos (ID, nombre original, fecha/hora `takenDate`), busqueda por nombre/ID y orden por fecha (default asc, fotos sin fecha al final) o nombre.
+- `src/pages/api/lumepic/album-photo-index.ts`: trae todas las fotos del album paginando `/photographs` (limit 100, 6 paginas en paralelo cuando la API da `total`; si no, secuencial hasta pagina vacia). Verificado con Chicago Marathon: 30798 fotos = total reportado, ~26 s.
+- Cache de fotos por album solo en memoria del cliente (se pierde al recargar). Se renderizan 500 filas con "Mostrar mas".
+
 ## 2026-05-30 - Ruta watcher solo lectura
 
 Se ajusto la UX del selector visual de carpeta:

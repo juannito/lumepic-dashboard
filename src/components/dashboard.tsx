@@ -16911,6 +16911,356 @@ function EventsDashboard({
     </div>
   );
 }
+type LumepicAlbumRow = AlbumInsight & {
+  profileId: string;
+  profileLabel: string;
+};
+
+type IndexedPhoto = {
+  id: string;
+  originalFileName: string;
+  takenDate?: string;
+  thumbnailUrl?: string;
+  url?: string;
+};
+
+const PHOTO_ROWS_STEP = 500;
+
+function LumepicEventsDashboard({
+  profiles,
+  language = "en",
+}: {
+  profiles: DashboardSummary[];
+  language?: Language;
+}) {
+  const es = language === "es";
+  const [selected, setSelected] = useState<LumepicAlbumRow | null>(null);
+  const [photos, setPhotos] = useState<IndexedPhoto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<"date" | "name">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [visibleRows, setVisibleRows] = useState(PHOTO_ROWS_STEP);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const cacheRef = useRef<Map<string, IndexedPhoto[]>>(new Map());
+  const requestRef = useRef(0);
+
+  const albums = useMemo<LumepicAlbumRow[]>(
+    () =>
+      profiles
+        .flatMap((profile) =>
+          profile.albums.map((album) => ({
+            ...album,
+            profileId: profile.id,
+            profileLabel: profile.label,
+          })),
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        ),
+    [profiles],
+  );
+
+  const openAlbum = async (album: LumepicAlbumRow) => {
+    const requestId = ++requestRef.current;
+    setSelected(album);
+    setQuery("");
+    setError(null);
+    setVisibleRows(PHOTO_ROWS_STEP);
+    setSortKey("date");
+    setSortDir("asc");
+    const cached = cacheRef.current.get(album.id);
+    if (cached) {
+      setPhotos(cached);
+      setLoading(false);
+      return;
+    }
+    setPhotos([]);
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/lumepic/album-photo-index?albumId=${encodeURIComponent(album.id)}&profileId=${encodeURIComponent(album.profileId)}`,
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      cacheRef.current.set(album.id, data.photos || []);
+      if (requestId === requestRef.current) setPhotos(data.photos || []);
+    } catch (err) {
+      if (requestId === requestRef.current)
+        setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (requestId === requestRef.current) setLoading(false);
+    }
+  };
+
+  const toggleSort = (key: "date" | "name") => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const list = needle
+      ? photos.filter(
+          (p) =>
+            p.originalFileName.toLowerCase().includes(needle) ||
+            p.id.toLowerCase().includes(needle),
+        )
+      : photos.slice();
+    const dir = sortDir === "asc" ? 1 : -1;
+    const time = (p: IndexedPhoto) => {
+      const value = p.takenDate ? new Date(p.takenDate).getTime() : NaN;
+      return Number.isNaN(value) ? null : value;
+    };
+    const byName = (a: IndexedPhoto, b: IndexedPhoto) =>
+      a.originalFileName.localeCompare(b.originalFileName, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    list.sort((a, b) => {
+      if (sortKey === "name") return dir * byName(a, b);
+      const ta = time(a);
+      const tb = time(b);
+      // Photos without a date always go last, regardless of direction.
+      if (ta === null && tb === null) return byName(a, b);
+      if (ta === null) return 1;
+      if (tb === null) return -1;
+      return ta === tb ? byName(a, b) : dir * (ta - tb);
+    });
+    return list;
+  }, [photos, query, sortKey, sortDir]);
+
+  const copy = (key: string, text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(key);
+      setTimeout(() => setCopiedId((c) => (c === key ? null : c)), 1500);
+    });
+  };
+
+  const cardStyle = {
+    background: "var(--paper)",
+    border: "1px solid var(--line)",
+    borderRadius: "16px",
+    padding: "20px",
+  };
+  const mono = {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: "0.78rem",
+  };
+  const sortMark = (key: "date" | "name") =>
+    sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+  const sortHeaderStyle = { cursor: "pointer", userSelect: "none" as const };
+
+  if (!selected) {
+    return (
+      <section style={cardStyle}>
+        <h2
+          style={{
+            fontSize: "1.5rem",
+            fontWeight: 700,
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}
+        >
+          <Album size={24} />
+          {es ? "Mis eventos en Lumepic" : "My Lumepic events"}
+          <span style={{ fontSize: "0.85rem", color: "var(--muted)", fontWeight: 400 }}>
+            {albums.length}
+          </span>
+        </h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>{es ? "Evento" : "Event"}</th>
+                <th>{es ? "Fecha" : "Date"}</th>
+                {profiles.length > 1 && <th>{es ? "Perfil" : "Profile"}</th>}
+                <th>{es ? "Fotos" : "Photos"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {albums.map((album) => (
+                <tr
+                  key={`${album.profileId}:${album.id}`}
+                  onClick={() => void openAlbum(album)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <td data-label={es ? "Evento" : "Event"}>
+                    <strong>{album.title}</strong>
+                  </td>
+                  <td data-label={es ? "Fecha" : "Date"}>
+                    {formatDateOnly(album.createdAt, language)}
+                  </td>
+                  {profiles.length > 1 && (
+                    <td data-label={es ? "Perfil" : "Profile"}>
+                      {album.profileLabel}
+                    </td>
+                  )}
+                  <td data-label={es ? "Fotos" : "Photos"}>{album.photos}</td>
+                </tr>
+              ))}
+              {albums.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    style={{ textAlign: "center", color: "var(--muted)", padding: "20px" }}
+                  >
+                    {es ? "No hay eventos disponibles." : "No events available."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  const shown = filtered.slice(0, visibleRows);
+
+  return (
+    <section style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+        <button className="text-button" onClick={() => setSelected(null)}>
+          <ArrowLeft size={16} />
+          {es ? "Eventos" : "Events"}
+        </button>
+        <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0 }}>
+          {selected.title}
+        </h2>
+        <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
+          {loading
+            ? es
+              ? "Cargando fotos…"
+              : "Loading photos…"
+            : query.trim()
+              ? `${filtered.length} ${es ? "de" : "of"} ${photos.length}`
+              : `${photos.length} ${es ? "fotos" : "photos"}${
+                  selected.photos > photos.length
+                    ? ` (${es ? "el álbum reporta" : "album reports"} ${selected.photos})`
+                    : ""
+                }`}
+        </span>
+      </div>
+
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setVisibleRows(PHOTO_ROWS_STEP);
+        }}
+        placeholder={es ? "Buscar por nombre de archivo o ID…" : "Search by filename or ID…"}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          borderRadius: "10px",
+          border: "1px solid var(--line)",
+          background: "transparent",
+          color: "var(--ink)",
+        }}
+      />
+
+      {error && <p style={{ color: "var(--danger, #ef4444)", fontSize: "0.85rem" }}>{error}</p>}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: "64px" }} />
+              <th>ID</th>
+              <th style={sortHeaderStyle} onClick={() => toggleSort("name")}>
+                {es ? "Nombre original" : "Original filename"}
+                {sortMark("name")}
+              </th>
+              <th style={sortHeaderStyle} onClick={() => toggleSort("date")}>
+                {es ? "Fecha y hora (metadata)" : "Date & time (metadata)"}
+                {sortMark("date")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((photo) => (
+              <tr key={photo.id}>
+                <td>
+                  {photo.thumbnailUrl ? (
+                    <a href={photo.url || photo.thumbnailUrl} target="_blank" rel="noreferrer">
+                      <img
+                        src={photo.thumbnailUrl}
+                        alt={photo.originalFileName || photo.id}
+                        loading="lazy"
+                        style={{
+                          width: "48px",
+                          height: "48px",
+                          objectFit: "cover",
+                          borderRadius: "6px",
+                        }}
+                      />
+                    </a>
+                  ) : null}
+                </td>
+                <td data-label="ID">
+                  <button
+                    className="text-button"
+                    style={mono}
+                    title={es ? "Copiar ID" : "Copy ID"}
+                    onClick={() => copy(`id:${photo.id}`, photo.id)}
+                  >
+                    {copiedId === `id:${photo.id}` ? <Check size={14} /> : <Copy size={14} />}
+                    {photo.id}
+                  </button>
+                </td>
+                <td data-label={es ? "Nombre original" : "Original filename"}>
+                  <strong style={{ wordBreak: "break-all" }}>
+                    {photo.originalFileName || (es ? "(sin nombre)" : "(no name)")}
+                  </strong>
+                </td>
+                <td data-label={es ? "Fecha y hora" : "Date & time"}>
+                  {photo.takenDate && !Number.isNaN(new Date(photo.takenDate).getTime())
+                    ? new Date(photo.takenDate).toLocaleString(es ? "es-AR" : "en-US", {
+                        dateStyle: "short",
+                        timeStyle: "medium",
+                      })
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+            {!loading && shown.length === 0 && (
+              <tr>
+                <td
+                  colSpan={4}
+                  style={{ textAlign: "center", color: "var(--muted)", padding: "20px" }}
+                >
+                  {es ? "Sin fotos." : "No photos."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {filtered.length > shown.length && (
+        <button
+          className="text-button"
+          onClick={() => setVisibleRows((n) => n + PHOTO_ROWS_STEP)}
+        >
+          {es
+            ? `Mostrar más (${shown.length} de ${filtered.length})`
+            : `Show more (${shown.length} of ${filtered.length})`}
+        </button>
+      )}
+    </section>
+  );
+}
+
 export function Dashboard() {
   const [rawDashboard, setRawDashboard] = useState<DashboardPayload | null>(
     null,
@@ -17822,7 +18172,8 @@ export function Dashboard() {
       activeView !== "event-photos" &&
       activeView !== "culling" &&
       activeView !== "cleaner" &&
-      activeView !== "photo-lookup"
+      activeView !== "photo-lookup" &&
+      activeView !== "lumepic-events"
     ) {
       const exists = dashboard.profiles.some((p) => p.id === activeView);
       if (!exists) {
@@ -18780,6 +19131,7 @@ export function Dashboard() {
   const isCullingView = activeView === "culling";
   const isCleanerView = activeView === "cleaner";
   const isPhotoLookupView = activeView === "photo-lookup";
+  const isLumepicEventsView = activeView === "lumepic-events";
   const showConsolidated = activeView === "consolidated";
 
   const switcherOptions = useMemo(() => {
@@ -18864,6 +19216,14 @@ export function Dashboard() {
       id: "cleaner",
       label: language === "es" ? "Limpiador de Álbum" : "Album Cleaner",
       icon: <Trash2 size={14} />,
+      dotColor: null,
+      badge: language === "es" ? "Nuevo" : "New",
+    });
+
+    opts.push({
+      id: "lumepic-events",
+      label: language === "es" ? "Mis eventos Lumepic" : "My Lumepic events",
+      icon: <Album size={14} />,
       dotColor: null,
       badge: language === "es" ? "Nuevo" : "New",
     });
@@ -19261,7 +19621,9 @@ export function Dashboard() {
             <div className="avatar">
               {isEventsView
                 ? "EVT"
-                : isClientsView
+                : isLumepicEventsView
+                  ? "LMP"
+                  : isClientsView
                   ? "CLT"
                   : isWatcherView
                     ? "WCH"
@@ -19280,7 +19642,11 @@ export function Dashboard() {
                 ? language === "es"
                   ? "Eventos"
                   : "Events"
-                : isClientsView
+                : isLumepicEventsView
+                  ? language === "es"
+                    ? "Mis eventos"
+                    : "My events"
+                  : isClientsView
                   ? t.clients
                   : isWatcherView
                     ? language === "es"
@@ -19305,7 +19671,11 @@ export function Dashboard() {
                 ? language === "es"
                   ? "Agrupación de ventas"
                   : "Sales grouping"
-                : isClientsView
+                : isLumepicEventsView
+                  ? language === "es"
+                    ? "Álbumes y fotos"
+                    : "Albums and photos"
+                  : isClientsView
                   ? `${clients.length} ${t.buyersCount}`
                   : isWatcherView
                     ? language === "es"
@@ -19512,6 +19882,11 @@ export function Dashboard() {
             <CullingDashboard language={language} />
           ) : isPhotoLookupView ? (
             <PhotoLookupDashboard language={language} />
+          ) : isLumepicEventsView ? (
+            <LumepicEventsDashboard
+              profiles={dashboard.profiles}
+              language={language}
+            />
           ) : isCleanerView ? (
             <CleanerDashboard
               language={language}
