@@ -2,6 +2,14 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [0.3.0] - 2026-11-21
+
+### Agregado
+- Vista "Mis eventos Lumepic": tabla de eventos (álbumes) con la cantidad de fotos de cada uno.
+- Al entrar a un evento se listan todas sus fotos con ID, nombre de archivo original y fecha y hora de la metadata, con buscador por nombre o ID.
+- La tabla de fotos se ordena por fecha (por defecto) o por nombre; clic en el encabezado alterna ascendente/descendente.
+- Nueva ruta `/api/lumepic/album-photo-index` que pagina todas las fotos de un álbum.
+
 ## [0.2.2] - 2026-05-30
 
 ### Cambiado
