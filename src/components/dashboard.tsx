@@ -17243,6 +17243,8 @@ type IndexedPhoto = {
   takenDate?: string;
   thumbnailUrl?: string;
   url?: string;
+  sdName?: string;
+  sdHow?: "log" | "size" | "time";
 };
 
 const PHOTO_ROWS_STEP = 500;
@@ -17331,6 +17333,7 @@ function LumepicEventsDashboard({
       ? photos.filter(
           (p) =>
             p.originalFileName.toLowerCase().includes(needle) ||
+            (p.sdName || "").toLowerCase().includes(needle) ||
             p.id.toLowerCase().includes(needle),
         )
       : photos.slice();
@@ -17502,6 +17505,7 @@ function LumepicEventsDashboard({
                 {es ? "Nombre original" : "Original filename"}
                 {sortMark("name")}
               </th>
+              <th>{es ? "Nombre en la SD" : "Name on the card"}</th>
               <th style={sortHeaderStyle} onClick={() => toggleSort("date")}>
                 {es ? "Fecha y hora (metadata)" : "Date & time (metadata)"}
                 {sortMark("date")}
@@ -17543,6 +17547,27 @@ function LumepicEventsDashboard({
                   <strong style={{ wordBreak: "break-all" }}>
                     {photo.originalFileName || (es ? "(sin nombre)" : "(no name)")}
                   </strong>
+                </td>
+                <td data-label={es ? "Nombre en la SD" : "Name on the card"}>
+                  {photo.sdName ? (
+                    <span
+                      style={mono}
+                      title={
+                        photo.sdHow === "time"
+                          ? es
+                            ? "Probable: coincide por hora de toma"
+                            : "Probable: matched by capture time"
+                          : es
+                            ? "Confirmado"
+                            : "Confirmed"
+                      }
+                    >
+                      {photo.sdName}
+                      {photo.sdHow === "time" ? " ?" : ""}
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--muted)" }}>—</span>
+                  )}
                 </td>
                 <td data-label={es ? "Fecha y hora" : "Date & time"}>
                   {photo.takenDate && !Number.isNaN(new Date(photo.takenDate).getTime())
@@ -19066,10 +19091,14 @@ export function Dashboard() {
     return false;
   }, [filterType, customStart, customEnd, allSalesDateSpan]);
 
-  const resolvedGrouping = useMemo(() => {
+  const isSingleDay =
+    filterType === "custom" && !!customStart && customStart === customEnd;
+
+  const resolvedGrouping = useMemo<ChartGrouping>(() => {
+    if (isSingleDay) return "hourly";
     if (!isLargeRange) return "daily";
     return chartGrouping === "daily" ? "monthly" : chartGrouping;
-  }, [isLargeRange, chartGrouping]);
+  }, [isSingleDay, isLargeRange, chartGrouping]);
 
   useEffect(() => {
     if (isLargeRange) {
@@ -19259,7 +19288,7 @@ export function Dashboard() {
 
     const sortedKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
 
-    return sortedKeys.map((key) => {
+    const points = sortedKeys.map((key) => {
       const g = groups[key];
       const point: any = {
         label: g.label,
@@ -19275,6 +19304,7 @@ export function Dashboard() {
       });
       return point;
     });
+    return resolvedGrouping === "hourly" ? fillHourlyPoints(points) : points;
   }, [
     dashboard,
     filterType,
@@ -19362,12 +19392,13 @@ export function Dashboard() {
 
     const sortedKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
 
-    return sortedKeys.map((key) => ({
+    const points = sortedKeys.map((key) => ({
       label: groups[key].label,
       sales: groups[key].sales,
       revenue: Number(groups[key].revenue.toFixed(2)),
       photos: groups[key].photos,
     }));
+    return resolvedGrouping === "hourly" ? fillHourlyPoints(points) : points;
   }, [
     dashboard,
     activeProfile,
