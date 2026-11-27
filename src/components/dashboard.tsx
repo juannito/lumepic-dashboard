@@ -1073,11 +1073,131 @@ function toLocalYYYYMMDD(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+type ChartGrouping = "hourly" | "hourlyRange" | "daily" | "weekly" | "monthly";
+
+const MAX_EVENT_LINES = 8;
+const EVENT_LINE_COLORS = [
+  "#6366f1",
+  "#10b981",
+  "#f59e0b",
+  "#ec4899",
+  "#8b5cf6",
+  "#06b6d4",
+  "#ef4444",
+  "#84cc16",
+];
+
+function SegmentedToggle({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "4px",
+        background: "var(--paper-2)",
+        padding: "4px",
+        borderRadius: "999px",
+        border: "1px solid var(--line)",
+      }}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={`filter-pill ${value === option.value ? "active" : ""}`}
+          style={{
+            height: "28px",
+            padding: "0 12px",
+            border: "none",
+            borderRadius: "999px",
+            background: value === option.value ? "var(--ink)" : "transparent",
+            color: value === option.value ? "var(--white)" : "var(--ink)",
+            fontSize: "0.78rem",
+            fontWeight: "600",
+            cursor: "pointer",
+          }}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function matchesDateFilter(
+  saleDate: Date,
+  filterType: string,
+  selectedYear: number,
+  customStart: string,
+  customEnd: string,
+): boolean {
+  const now = new Date();
+  if (filterType === "7d" || filterType === "15d") {
+    const from = new Date();
+    from.setDate(now.getDate() - (filterType === "7d" ? 7 : 15));
+    from.setHours(0, 0, 0, 0);
+    return saleDate >= from;
+  }
+  if (filterType === "ytd") {
+    return saleDate >= new Date(now.getFullYear(), 0, 1);
+  }
+  if (filterType === "year") {
+    return saleDate.getFullYear() === selectedYear;
+  }
+  if (filterType === "custom") {
+    if (customStart && saleDate < new Date(customStart + "T00:00:00")) {
+      return false;
+    }
+    if (customEnd && saleDate > new Date(customEnd + "T23:59:59")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function fillHourlyPoints<T extends { label: string }>(points: T[]): T[] {
+  if (points.length === 0) return points;
+  const byLabel = new Map(points.map((pt) => [pt.label, pt]));
+  const template = points[0] as Record<string, unknown>;
+  return Array.from({ length: 24 }, (_, h) => {
+    const label = `${String(h).padStart(2, "0")}:00`;
+    const existing = byLabel.get(label);
+    if (existing) return existing;
+    const empty: Record<string, unknown> = { label };
+    Object.keys(template).forEach((k) => {
+      if (k !== "label") empty[k] = 0;
+    });
+    return empty as T;
+  });
+}
+
 function getGroupingKeyAndLabel(
   date: Date,
-  grouping: "daily" | "weekly" | "monthly",
+  grouping: ChartGrouping,
   language: Language,
 ): { key: string; label: string } {
+  if (grouping === "hourly") {
+    const hh = String(date.getHours()).padStart(2, "0");
+    return { key: `${toLocalYYYYMMDD(date)}T${hh}`, label: `${hh}:00` };
+  }
+
+  if (grouping === "hourlyRange") {
+    const hh = String(date.getHours()).padStart(2, "0");
+    const day = date.toLocaleDateString(language === "es" ? "es-AR" : "en-US", {
+      month: "short",
+      day: "2-digit",
+    });
+    return { key: `${toLocalYYYYMMDD(date)}T${hh}`, label: `${day} ${hh}:00` };
+  }
+
   if (grouping === "weekly") {
     const startOfWeek = new Date(date);
     const day = startOfWeek.getDay();
@@ -2345,13 +2465,32 @@ function ConsolidatedDashboard({
   allProfiles: DashboardSummary[];
   language?: Language;
   customEvents?: CustomEvent[];
-  resolvedGrouping: "daily" | "weekly" | "monthly";
+  resolvedGrouping: ChartGrouping;
   setChartGrouping: (val: "daily" | "weekly" | "monthly") => void;
   isLargeRange: boolean;
 }) {
   const [metric, setMetric] = useState<"revenue" | "photos">("revenue");
   const [selectedEventFilter, setSelectedEventFilter] = useState<string>("all");
+  const [unitOverride, setUnitOverride] = useState<"hour" | "day" | null>(null);
+  const [seriesMode, setSeriesMode] = useState<"total" | "events">("total");
   const t = TRANSLATIONS[language];
+
+  const effectiveGrouping: ChartGrouping =
+    unitOverride === "hour"
+      ? resolvedGrouping === "hourly"
+        ? "hourly"
+        : "hourlyRange"
+      : unitOverride === "day"
+        ? "daily"
+        : resolvedGrouping;
+  const isHourly =
+    effectiveGrouping === "hourly" || effectiveGrouping === "hourlyRange";
+  const eventsMode = seriesMode === "events" && selectedEventFilter === "all";
+
+  const pickGrouping = (g: "weekly" | "monthly") => {
+    setUnitOverride(null);
+    setChartGrouping(g);
+  };
 
   const allAlbumTitles = useMemo(() => {
     const titles = new Set<string>();
@@ -2374,6 +2513,134 @@ function ConsolidatedDashboard({
     });
     return map;
   }, [allProfiles]);
+
+  const eventsData = useMemo(() => {
+    const series: { id: string; name: string }[] = [];
+    const points: any[] = [];
+    if (!eventsMode) return { points, series };
+
+    const inRange = (d: Date) =>
+      matchesDateFilter(d, filterType, selectedYear, customStart, customEnd);
+
+    const publishedAlbums = Object.values(albumMap).filter((album) => {
+      const d = new Date(album.publishedAt || album.createdAt);
+      return !isNaN(d.getTime()) && inRange(d);
+    });
+    const publishedIds = new Set(publishedAlbums.map((album) => album.id));
+
+    const attribute = (sale: Sale): { id: string; ratio: number }[] => {
+      const photos = sale.photographs || [];
+      if (photos.length > 0) {
+        const counts: Record<string, number> = {};
+        photos.forEach((p) => {
+          if (publishedIds.has(p.albumId)) {
+            counts[p.albumId] = (counts[p.albumId] || 0) + 1;
+          }
+        });
+        return Object.entries(counts).map(([id, count]) => ({
+          id,
+          ratio: count / photos.length,
+        }));
+      }
+      const match = publishedAlbums.find((album) =>
+        isAlbumMatch(sale.album, album.title),
+      );
+      return match ? [{ id: match.id, ratio: 1 }] : [];
+    };
+
+    const sales: { sale: Sale; date: Date; allocs: { id: string; ratio: number }[] }[] = [];
+    const revenueById: Record<string, number> = {};
+    allProfiles.forEach((profile) => {
+      profile.sales.forEach((sale) => {
+        if (sale.isComped) return;
+        const date = new Date(sale.date);
+        if (isNaN(date.getTime()) || !inRange(date)) return;
+        const allocs = attribute(sale);
+        allocs.forEach(({ id, ratio }) => {
+          revenueById[id] = (revenueById[id] || 0) + sale.total * ratio;
+        });
+        sales.push({ sale, date, allocs });
+      });
+    });
+
+    const topIds = Object.keys(revenueById)
+      .sort((x, y) => revenueById[y] - revenueById[x])
+      .slice(0, MAX_EVENT_LINES);
+    const topSet = new Set(topIds);
+    topIds.forEach((id) =>
+      series.push({ id, name: albumMap[id]?.title || id }),
+    );
+
+    const groups: Record<string, Record<string, any>> = {};
+    sales.forEach(({ sale, date, allocs }) => {
+      const { key, label } = getGroupingKeyAndLabel(
+        date,
+        effectiveGrouping,
+        language,
+      );
+      if (!groups[key]) {
+        groups[key] = {
+          label,
+          totalRevenue: 0,
+          totalPhotos: 0,
+          totalSales: 0,
+          others_revenue: 0,
+          others_photos: 0,
+        };
+        topIds.forEach((id) => {
+          groups[key][`ev_${id}_revenue`] = 0;
+          groups[key][`ev_${id}_photos`] = 0;
+        });
+      }
+      const g = groups[key];
+      const photos = sale.photos || 0;
+      g.totalRevenue += sale.total;
+      g.totalPhotos += photos;
+      g.totalSales += 1;
+
+      let assigned = 0;
+      allocs.forEach(({ id, ratio }) => {
+        if (!topSet.has(id)) return;
+        assigned += ratio;
+        g[`ev_${id}_revenue`] += sale.total * ratio;
+        g[`ev_${id}_photos`] += photos * ratio;
+      });
+      const rest = Math.max(0, 1 - assigned);
+      g.others_revenue += sale.total * rest;
+      g.others_photos += photos * rest;
+    });
+
+    Object.keys(groups)
+      .sort((x, y) => x.localeCompare(y))
+      .forEach((key) => {
+        const g = groups[key];
+        const point: Record<string, any> = {};
+        Object.entries(g).forEach(([k, v]) => {
+          point[k] =
+            typeof v === "number"
+              ? k.endsWith("_photos") || k === "totalPhotos"
+                ? Math.round(v)
+                : Number(v.toFixed(2))
+              : v;
+        });
+        points.push(point);
+      });
+
+    return {
+      points: effectiveGrouping === "hourly" ? fillHourlyPoints(points) : points,
+      series,
+    };
+  }, [
+    eventsMode,
+    albumMap,
+    allProfiles,
+    filterType,
+    selectedYear,
+    customStart,
+    customEnd,
+    effectiveGrouping,
+    language,
+  ]);
 
   const filteredChartData = useMemo(() => {
     const now = new Date();
@@ -2411,7 +2678,9 @@ function ConsolidatedDashboard({
       return true;
     };
 
-    if (selectedEventFilter === "all") {
+    if (eventsMode) return eventsData.points;
+
+    if (selectedEventFilter === "all" && effectiveGrouping === resolvedGrouping) {
       return trendData;
     }
 
@@ -2450,7 +2719,7 @@ function ConsolidatedDashboard({
         if (isNaN(saleDate.getTime())) return;
         if (!matchesFilter(saleDate)) return;
 
-        let isMatch = false;
+        let isMatch = selectedEventFilter === "all";
         if (targetCustomEvent) {
           const matchesPhotoAlbum = sale.photographs?.some((p) =>
             targetCustomEvent!.albumIds.includes(p.albumId),
@@ -2467,7 +2736,7 @@ function ConsolidatedDashboard({
 
         const { key, label } = getGroupingKeyAndLabel(
           saleDate,
-          resolvedGrouping,
+          effectiveGrouping,
           language,
         );
         if (!groups[key]) {
@@ -2552,7 +2821,7 @@ function ConsolidatedDashboard({
 
     const sortedKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
 
-    return sortedKeys.map((key) => {
+    const points = sortedKeys.map((key) => {
       const g = groups[key];
       const point: any = {
         label: g.label,
@@ -2585,6 +2854,7 @@ function ConsolidatedDashboard({
 
       return point;
     });
+    return effectiveGrouping === "hourly" ? fillHourlyPoints(points) : points;
   }, [
     trendData,
     selectedEventFilter,
@@ -2595,11 +2865,36 @@ function ConsolidatedDashboard({
     customStart,
     customEnd,
     albumMap,
-    resolvedGrouping,
+    effectiveGrouping,
     language,
   ]);
 
   const chartLines = useMemo(() => {
+    if (eventsMode) {
+      const suffix = metric === "revenue" ? "revenue" : "photos";
+      const lines = eventsData.series.map((ev, idx) => ({
+        dataKey: `ev_${ev.id}_${suffix}`,
+        name: ev.name,
+        color: EVENT_LINE_COLORS[idx % EVENT_LINE_COLORS.length],
+        strokeWidth: 3,
+      }));
+      if (eventsData.points.some((pt) => pt[`others_${suffix}`] > 0)) {
+        lines.push({
+          dataKey: `others_${suffix}`,
+          name: language === "es" ? "Otros" : "Others",
+          color: "#9ca3af",
+          strokeWidth: 2,
+        });
+      }
+      lines.push({
+        dataKey: metric === "revenue" ? "totalRevenue" : "totalPhotos",
+        name: "Total",
+        color: "var(--ink, #000000)",
+        strokeWidth: 2,
+      });
+      return lines;
+    }
+
     let targetCustomEvent: CustomEvent | null = null;
     if (selectedEventFilter.startsWith("custom:")) {
       const id = selectedEventFilter.replace("custom:", "");
@@ -2700,6 +2995,8 @@ function ConsolidatedDashboard({
     metric,
     language,
     filteredChartData,
+    eventsMode,
+    eventsData,
   ]);
 
   const consolidatedAlbums = useMemo(() => {
@@ -2875,6 +3172,30 @@ function ConsolidatedDashboard({
                   {language === "es" ? "Fotos" : "Photos"}
                 </button>
               </div>
+              <SegmentedToggle
+                value={isHourly ? "hour" : effectiveGrouping === "daily" ? "day" : ""}
+                onChange={(v) => setUnitOverride(v as "hour" | "day")}
+                options={[
+                  { value: "hour", label: language === "es" ? "Horas" : "Hours" },
+                  { value: "day", label: language === "es" ? "Días" : "Days" },
+                ]}
+              />
+              {selectedEventFilter === "all" && (
+                <SegmentedToggle
+                  value={seriesMode}
+                  onChange={(v) => setSeriesMode(v as "total" | "events")}
+                  options={[
+                    {
+                      value: "total",
+                      label: language === "es" ? "Todas" : "All sales",
+                    },
+                    {
+                      value: "events",
+                      label: language === "es" ? "Por evento" : "By event",
+                    },
+                  ]}
+                />
+              )}
               <TrendingUp size={21} />
             </div>
           </div>
@@ -2986,49 +3307,49 @@ function ConsolidatedDashboard({
                     >
                       <button
                         type="button"
-                        className={`filter-pill ${resolvedGrouping === "weekly" ? "active" : ""}`}
+                        className={`filter-pill ${effectiveGrouping === "weekly" ? "active" : ""}`}
                         style={{
                           height: "28px",
                           padding: "0 12px",
                           border: "none",
                           borderRadius: "999px",
                           background:
-                            resolvedGrouping === "weekly"
+                            effectiveGrouping === "weekly"
                               ? "var(--ink)"
                               : "transparent",
                           color:
-                            resolvedGrouping === "weekly"
+                            effectiveGrouping === "weekly"
                               ? "var(--white)"
                               : "var(--ink)",
                           fontSize: "0.78rem",
                           fontWeight: "600",
                           cursor: "pointer",
                         }}
-                        onClick={() => setChartGrouping("weekly")}
+                        onClick={() => pickGrouping("weekly")}
                       >
                         {language === "es" ? "Semanal" : "Weekly"}
                       </button>
                       <button
                         type="button"
-                        className={`filter-pill ${resolvedGrouping === "monthly" ? "active" : ""}`}
+                        className={`filter-pill ${effectiveGrouping === "monthly" ? "active" : ""}`}
                         style={{
                           height: "28px",
                           padding: "0 12px",
                           border: "none",
                           borderRadius: "999px",
                           background:
-                            resolvedGrouping === "monthly"
+                            effectiveGrouping === "monthly"
                               ? "var(--ink)"
                               : "transparent",
                           color:
-                            resolvedGrouping === "monthly"
+                            effectiveGrouping === "monthly"
                               ? "var(--white)"
                               : "var(--ink)",
                           fontSize: "0.78rem",
                           fontWeight: "600",
                           cursor: "pointer",
                         }}
-                        onClick={() => setChartGrouping("monthly")}
+                        onClick={() => pickGrouping("monthly")}
                       >
                         {language === "es" ? "Mensual" : "Monthly"}
                       </button>
@@ -3603,7 +3924,7 @@ function ProfileDashboard({
   availableYears: number[];
   language?: Language;
   onOpenLightbox?: (photo: GalleryPhotoItem, list?: GalleryPhotoItem[]) => void;
-  resolvedGrouping: "daily" | "weekly" | "monthly";
+  resolvedGrouping: ChartGrouping;
   setChartGrouping: (val: "daily" | "weekly" | "monthly") => void;
   isLargeRange: boolean;
 }) {
