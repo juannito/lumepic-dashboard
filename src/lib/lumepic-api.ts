@@ -265,6 +265,30 @@ export async function fetchAllAlbums(token: string, bypassCache = false): Promis
   return allAlbums;
 }
 
+// The quick first load asks for a small `limit`; anything from FULL_SALES_LIMIT up
+// pages through the whole history so older events keep their cohort rows.
+const FULL_SALES_LIMIT = 500;
+
+export async function fetchAllSales(token: string, limit: number, bypassCache = false) {
+  const pageSize = 100;
+  const max = limit >= FULL_SALES_LIMIT ? Infinity : limit;
+  const items: AnyRecord[] = [];
+  let count = 0;
+  for (let page = 0; page < 100 && items.length < max; page += 1) {
+    const take = Math.min(pageSize, max - items.length);
+    const res = await lumepicFetch(
+      `/sales?pagination%5Blimit%5D=${take}&pagination%5Bskip%5D=${items.length}&status=approved`,
+      token,
+      bypassCache
+    );
+    const rows = arrayFrom(res);
+    items.push(...rows);
+    count = numberFrom(asRecord(res), ["count"], count);
+    if (rows.length < take || (count && items.length >= count)) break;
+  }
+  return { items, count: count || items.length };
+}
+
 // /dashboard/photographer/stats replaces the decommissioned metrics, insights and
 // sales-by-activity endpoints. Without a date range it returns all-time totals.
 function fetchPhotographerStats(token: string, bypassCache = false, albumId?: string) {
@@ -414,7 +438,7 @@ async function settleDetailedSales(salesRows: AnyRecord[], token: string, seller
   
   const chunkSize = 10;
   // Caps network detail fetches per load; cached details never count against it.
-  const maxDetailFetches = 500;
+  const maxDetailFetches = 1500;
   let detailFetches = 0;
 
   for (let i = 0; i < salesRows.length; i += chunkSize) {
@@ -596,7 +620,7 @@ async function getLumepicSummaryForProfile(config: ProfileConfig, limit: number 
     const token = config.token;
     const [salesRaw, albumsRaw, statsRaw, profileRaw] =
       await Promise.all([
-        lumepicFetch(`/sales?pagination%5Blimit%5D=${limit}&pagination%5Bskip%5D=0&status=approved`, token, bypassCache),
+        fetchAllSales(token, limit, bypassCache),
         fetchAllAlbums(token, bypassCache),
         fetchPhotographerStats(token, bypassCache),
         lumepicFetch("/users/profile", token, bypassCache)

@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { readFileSync, statSync } from "fs";
+import { join } from "path";
 import { lumepicFetch, getProfileConfigs } from "@/lib/lumepic-api";
 
 export type AlbumPhotoIndexItem = {
@@ -7,7 +9,29 @@ export type AlbumPhotoIndexItem = {
   takenDate?: string;
   thumbnailUrl?: string;
   url?: string;
+  size?: number;
+  /** Name the file has on the camera's card, from data/sd-names.json (made by scripts/match-sd-names.py). */
+  sdName?: string;
+  /** How it was matched: "log" and "size" are certain, "time" is probable. */
+  sdHow?: "log" | "size" | "time";
 };
+
+type SdNames = Record<string, { sd: string; how: "log" | "size" | "time" }>;
+const SD_NAMES_FILE = join(process.cwd(), "data", "sd-names.json");
+let sdNamesCache: { mtimeMs: number; names: SdNames } | null = null;
+
+// Re-read only when the file changes: the script rewrites it as the album grows.
+function loadSdNames(): SdNames {
+  try {
+    const { mtimeMs } = statSync(SD_NAMES_FILE);
+    if (!sdNamesCache || sdNamesCache.mtimeMs !== mtimeMs) {
+      sdNamesCache = { mtimeMs, names: JSON.parse(readFileSync(SD_NAMES_FILE, "utf8")) };
+    }
+    return sdNamesCache.names;
+  } catch {
+    return {};
+  }
+}
 
 export type AlbumPhotoIndexResponse = {
   photos: AlbumPhotoIndexItem[];
@@ -96,6 +120,7 @@ export default async function handler(
           takenDate: str(item, ["takenDate", "date"]),
           thumbnailUrl: str(item, ["thumbnailUrl", "thumbnail"]),
           url: str(item, ["url", "originalUrl"]),
+          size: typeof item.size === "number" ? item.size : undefined,
         });
       }
     };
@@ -129,7 +154,11 @@ export default async function handler(
       }
     }
 
-    const photos = Array.from(seen.values());
+    const sdNames = loadSdNames();
+    const photos = Array.from(seen.values()).map((photo) => {
+      const match = sdNames[photo.originalFileName];
+      return match ? { ...photo, sdName: match.sd, sdHow: match.how } : photo;
+    });
     return response
       .status(200)
       .json({ photos, total: apiTotal ?? photos.length, albumId });

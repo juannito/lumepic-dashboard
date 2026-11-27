@@ -46,3 +46,6 @@ inspect_view_file_ranges.py
 test-*.html
 test-*.js
 
+
+# Names on the camera's card, made by scripts/match-sd-names.py
+data/
